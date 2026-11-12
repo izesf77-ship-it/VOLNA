@@ -2,34 +2,20 @@ import SwiftUI
 
 @main
 struct VOLNAApp: App {
-    // Shared application state
     @State private var appState = AppState()
-    
-    init() {
-        // Configure audio session on app launch
-        configureAudioSession()
-    }
-    
+    @Environment(\.scenePhase) private var scenePhase
+
     var body: some Scene {
         WindowGroup {
             RootView()
                 .environment(appState)
+                .preferredColorScheme(.dark)
+                .tint(.volnaPurple)
         }
-    }
-    
-    private func configureAudioSession() {
-        do {
-            let audioSession = AVAudioSession.sharedInstance()
-            try audioSession.setCategory(
-                .playback,
-                mode: .default,
-                options: []
-            )
-            try audioSession.setActive(true)
-        } catch {
-            print("Failed to configure audio session: \(error)")
+        .onChange(of: scenePhase) { _, phase in
+            if phase != .active {
+                appState.player.saveState()
+            }
         }
     }
 }
-
-import AVFoundation
