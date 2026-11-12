@@ -128,6 +128,7 @@ base64 -i profile.mobileprovision | pbcopy
 
 `VOLNA-unsigned.ipa`:
 
+- в релизе `v1.0.0` такой файл уже есть: `https://github.com/izesf77-ship-it/VOLNA/releases/tag/v1.0.0`;
 - не устанавливается двойным щелчком;
 - не предназначена для App Store;
 - требует собственной подписи (AltStore, Sideloadly, Xcode) и вашей учётной записи Apple;
@@ -153,6 +154,7 @@ git push origin v1.0.0
 В репозитории есть статическая проверка исходников, но **физический iPhone в рамках разработки не использовался**. Поэтому:
 
 - сборка и unit-тесты **проверены GitHub Actions**: 26 тестов, 0 падений (коммит `2ba79df`);
+- **IPA workflow проверен** на теге `v1.0.0`: артефакт собран, `embedded.mobileprovision` и `_CodeSignature` отсутствуют;
 - воспроизведение, фон, экран блокировки, прерывания и маршруты аудио требуют проверки на реальном устройстве;
 - сетевые провайдеры проверялись живыми HTTP-запросами (Jamendo, Internet Archive, Wikimedia, Openverse), но это не заменяет тест на iPhone.
 

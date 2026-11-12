@@ -7,7 +7,7 @@ VOLNA ищет музыку в легальных открытых катало�
 ![Platform](https://img.shields.io/badge/platform-iOS%2017.0%2B-blue)
 ![Swift](https://img.shields.io/badge/Swift-5%20language%20mode-orange)
 ![License](https://img.shields.io/badge/license-MIT-green)
-![Status](https://img.shields.io/badge/status-1.0.0-yellow)
+![Status](https://img.shields.io/badge/status-1.0.0-brightgreen)
 
 ---
 
@@ -53,6 +53,16 @@ VOLNA использует только официально доступные 
 - Если в репозитории нет сертификата и provisioning profile, workflow собирает **неподписанную** IPA и честно называет её `VOLNA-unsigned.ipa`.
 
 Текущий аудит проекта: [Documentation/AUDIT.md](Documentation/AUDIT.md).
+
+### Готовый IPA
+
+Релиз **v1.0.0** содержит `VOLNA-unsigned.ipa`:
+
+- не устанавливается двойным щелчком и не предназначен для App Store;
+- требует вашей собственной подписи (AltStore, Sideloadly или Xcode) и учётной записи Apple;
+- подписанной сборки в релизе нет, потому что в репозитории нет сертификата и provisioning profile.
+
+Файл и описание релиза: [github.com/izesf77-ship-it/VOLNA/releases/tag/v1.0.0](https://github.com/izesf77-ship-it/VOLNA/releases/tag/v1.0.0).
 
 ---
 

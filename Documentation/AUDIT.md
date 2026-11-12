@@ -104,6 +104,18 @@
 
 После исправления запуск на коммите `2ba79df` завершился со статусом `success`.
 
+## IPA и релиз
+
+Тег `v1.0.0` указывает на коммит `9fc4a5e`. Workflow **Build IPA** завершился успешно:
+
+- артефакт `VOLNA-IPA`: 1 132 706 байт;
+- релиз `v1.0.0`: asset `VOLNA-unsigned.ipa`, 1 134 316 байт;
+- в репозитории нет ни одного secret или variable, поэтому подпись не выполнялась;
+- в IPA нет `embedded.mobileprovision` и `_CodeSignature`;
+- `Info.plist` содержит `com.volna.app`, версию `1.0.0`, фоновый режим `audio` и `NSAppTransportSecurity` с запретом произвольных HTTP-загрузок.
+
+`VOLNA-unsigned.ipa` нельзя установить двойным щелчком. Для установки нужна собственная подпись (AltStore, Sideloadly или Xcode) и ваша учётная запись Apple.
+
 ## Что остаётся непроверенным
 
 ---
