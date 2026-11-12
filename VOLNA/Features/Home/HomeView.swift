@@ -6,8 +6,9 @@ struct HomeView: View {
     var body: some View {
         NavigationStack {
             ScrollView(showsIndicators: false) {
-                LazyVStack(alignment: .leading, spacing: 26) {
+                VStack(alignment: .leading, spacing: VolnaLayout.sectionSpacing) {
                     header
+                        .padding(.top, 8)
 
                     if appState.isHomeLoading && appState.homeSections.isEmpty {
                         loadingState
@@ -20,18 +21,17 @@ struct HomeView: View {
                             heroCard(section: hero)
                         }
 
-                        ForEach(appState.homeSections) { section in
+                        ForEach(appState.homeSections.dropFirst()) { section in
                             shelf(section: section)
                         }
                     }
 
                     sourcesFooter
                 }
-                .padding(.horizontal, 18)
-                .padding(.top, 12)
-                .padding(.bottom, 148)
+                .padding(.horizontal, VolnaLayout.horizontalPadding)
+                .padding(.bottom, 16)
             }
-            .background(VolnaBackground())
+            .volnaScreenLayout()
             .toolbar(.hidden, for: .navigationBar)
             .refreshable {
                 await appState.loadHome(force: true)
@@ -54,26 +54,15 @@ struct HomeView: View {
     // MARK: - Header
 
     private var header: some View {
-        VStack(alignment: .leading, spacing: 18) {
-            HStack(alignment: .top) {
+        VStack(alignment: .leading, spacing: 16) {
+            HStack(alignment: .center) {
                 VStack(alignment: .leading, spacing: 4) {
                     Text(greeting)
-                        .font(.volnaBody(14))
-                        .foregroundStyle(Color.volnaTextTertiary)
-                    HStack(spacing: 8) {
-                        Text("VOLNA")
-                            .font(.system(size: 30, weight: .heavy, design: .rounded))
-                            .foregroundStyle(
-                                LinearGradient(
-                                    colors: [.white, Color(hex: "C7B9FF")],
-                                    startPoint: .topLeading,
-                                    endPoint: .bottomTrailing
-                                )
-                            )
-                        Circle()
-                            .fill(Color.volnaPurple)
-                            .frame(width: 7, height: 7)
-                    }
+                        .font(.system(size: 15, weight: .medium, design: .default))
+                        .foregroundStyle(Color.volnaTextSecondary)
+                    Text("VOLNA")
+                        .font(.system(size: 32, weight: .bold, design: .default))
+                        .foregroundStyle(Color.volnaTextPrimary)
                 }
                 Spacer()
                 Button {
@@ -82,12 +71,12 @@ struct HomeView: View {
                     Image(systemName: "magnifyingglass")
                 }
                 .buttonStyle(VolnaIconButtonStyle())
+                .accessibilityLabel("Поиск")
             }
 
-            Text("Музыка из открытых источников.\nБез рекламы и подписок.")
-                .font(.system(size: 22, weight: .semibold, design: .rounded))
-                .foregroundStyle(Color.volnaTextPrimary)
-                .lineSpacing(3)
+            Text("Музыка из открытых источников")
+                .font(.system(size: 17, weight: .regular, design: .default))
+                .foregroundStyle(Color.volnaTextSecondary)
         }
     }
 
@@ -109,67 +98,82 @@ struct HomeView: View {
             appState.play(first, in: section.tracks)
         } label: {
             ZStack(alignment: .bottomLeading) {
+                // Background gradient
                 RoundedRectangle(cornerRadius: 28, style: .continuous)
                     .fill(
                         LinearGradient(
-                            colors: section.colors.map { $0.opacity(0.92) },
+                            colors: section.colors.isEmpty ? [Color.volnaPurple, Color.volnaBlue] : section.colors,
                             startPoint: .topLeading,
                             endPoint: .bottomTrailing
                         )
                     )
 
+                // Decorative circles
                 Circle()
-                    .fill(.white.opacity(0.14))
-                    .frame(width: 180, height: 180)
-                    .blur(radius: 10)
-                    .offset(x: 210, y: -80)
+                    .fill(.white.opacity(0.12))
+                    .frame(width: 200, height: 200)
+                    .blur(radius: 20)
+                    .offset(x: 180, y: -60)
 
-                HStack(alignment: .bottom, spacing: 14) {
-                    VStack(alignment: .leading, spacing: 8) {
-                        Text("ВОЛНА · ВЫБОР VOLNA")
-                            .font(.system(size: 10, weight: .heavy, design: .rounded))
-                            .tracking(1.5)
-                            .foregroundStyle(.white.opacity(0.7))
+                Circle()
+                    .fill(.black.opacity(0.1))
+                    .frame(width: 120, height: 120)
+                    .blur(radius: 30)
+                    .offset(x: -20, y: 80)
+
+                HStack(alignment: .bottom, spacing: 16) {
+                    VStack(alignment: .leading, spacing: 10) {
+                        Text("ПОДБОРКА")
+                            .font(.system(size: 11, weight: .bold, design: .default))
+                            .tracking(1.2)
+                            .foregroundStyle(.white.opacity(0.75))
+
                         Text(section.title)
-                            .font(.system(size: 25, weight: .bold, design: .rounded))
+                            .font(.system(size: 26, weight: .bold, design: .default))
                             .foregroundStyle(.white)
                             .lineLimit(2)
-                        Text(section.subtitle)
-                            .font(.system(size: 12, weight: .medium, design: .rounded))
-                            .foregroundStyle(.white.opacity(0.78))
-                            .lineLimit(2)
-                        HStack(spacing: 8) {
-                            Label("Слушать", systemImage: "play.fill")
-                                .font(.system(size: 12, weight: .bold, design: .rounded))
-                                .padding(.horizontal, 14)
-                                .padding(.vertical, 8)
-                                .background(.white)
-                                .foregroundStyle(Color(hex: "1A1030"))
-                                .clipShape(Capsule())
-                            Text("\(section.tracks.count) треков")
-                                .font(.system(size: 11, weight: .medium, design: .rounded))
-                                .foregroundStyle(.white.opacity(0.72))
-                        }
-                        .padding(.top, 2)
-                    }
+                            .multilineTextAlignment(.leading)
 
-                    Spacer(minLength: 0)
+                        Text(section.subtitle)
+                            .font(.system(size: 14, weight: .medium, design: .default))
+                            .foregroundStyle(.white.opacity(0.85))
+                            .lineLimit(2)
+
+                        HStack(spacing: 10) {
+                            HStack(spacing: 6) {
+                                Image(systemName: "play.fill")
+                                    .font(.system(size: 11, weight: .bold))
+                                Text("Слушать")
+                                    .font(.system(size: 14, weight: .semibold, design: .default))
+                            }
+                            .foregroundStyle(Color(hex: "1A1030"))
+                            .padding(.horizontal, 16)
+                            .padding(.vertical, 10)
+                            .background(.white, in: Capsule())
+
+                            Text("\(section.tracks.count) треков")
+                                .font(.system(size: 13, weight: .medium, design: .default))
+                                .foregroundStyle(.white.opacity(0.8))
+                        }
+                        .padding(.top, 4)
+                    }
+                    .frame(maxWidth: .infinity, alignment: .leading)
 
                     if let artwork = section.tracks.first?.artworkURL {
-                        ArtworkView(url: artwork, size: 104, cornerRadius: 22)
-                            .rotationEffect(.degrees(4))
-                            .shadow(color: .black.opacity(0.35), radius: 14, y: 8)
+                        ArtworkView(url: artwork, size: 110, cornerRadius: 16)
+                            .rotationEffect(.degrees(6))
+                            .shadow(color: .black.opacity(0.3), radius: 16, y: 8)
                     }
                 }
                 .padding(20)
             }
-            .frame(height: 202)
+            .frame(minHeight: 210)
             .clipShape(RoundedRectangle(cornerRadius: 28, style: .continuous))
             .overlay {
                 RoundedRectangle(cornerRadius: 28, style: .continuous)
-                    .stroke(.white.opacity(0.16), lineWidth: 1)
+                    .stroke(.white.opacity(0.15), lineWidth: 1)
             }
-            .shadow(color: section.colors.first?.opacity(0.30) ?? .clear, radius: 28, y: 14)
+            .shadow(color: (section.colors.first ?? .volnaPurple).opacity(0.35), radius: 24, y: 12)
         }
         .buttonStyle(.plain)
     }
@@ -181,7 +185,7 @@ struct HomeView: View {
             SectionHeader(
                 title: section.title,
                 subtitle: section.subtitle,
-                actionTitle: "Играть"
+                actionTitle: section.tracks.isEmpty ? nil : "Играть"
             ) {
                 guard let first = section.tracks.first else { return }
                 appState.play(first, in: section.tracks)
@@ -190,10 +194,11 @@ struct HomeView: View {
             ScrollView(.horizontal, showsIndicators: false) {
                 LazyHStack(alignment: .top, spacing: 14) {
                     ForEach(section.tracks) { track in
-                        TrackCard(track: track, queue: section.tracks)
+                        TrackCard(track: track, queue: section.tracks, width: 160)
                     }
                 }
-                .padding(.vertical, 2)
+                .padding(.vertical, 4)
+                .padding(.horizontal, 1)
             }
             .scrollClipDisabled()
         }
@@ -202,51 +207,67 @@ struct HomeView: View {
     // MARK: - States
 
     private var loadingState: some View {
-        VStack(spacing: 18) {
+        VStack(alignment: .leading, spacing: 20) {
             HStack(spacing: 12) {
                 ProgressView()
                     .tint(Color.volnaPurple)
-                Text("Собираем музыку из открытых источников…")
-                    .font(.volnaBody(13))
+                Text("Загружаем подборки…")
+                    .font(.system(size: 15, weight: .regular, design: .default))
                     .foregroundStyle(Color.volnaTextSecondary)
             }
-            .frame(maxWidth: .infinity, alignment: .leading)
+            .padding(.vertical, 8)
 
-            ForEach(0..<3, id: \.self) { index in
-                RoundedRectangle(cornerRadius: 22, style: .continuous)
-                    .fill(Color.white.opacity(0.045))
-                    .frame(height: index == 0 ? 190 : 110)
+            RoundedRectangle(cornerRadius: 28, style: .continuous)
+                .fill(Color.volnaSurface)
+                .frame(height: 210)
+
+            ForEach(0..<2, id: \.self) { _ in
+                VStack(alignment: .leading, spacing: 12) {
+                    RoundedRectangle(cornerRadius: 8, style: .continuous)
+                        .fill(Color.volnaSurfaceSecondary)
+                        .frame(width: 180, height: 20)
+                    HStack(spacing: 14) {
+                        ForEach(0..<3, id: \.self) { _ in
+                            RoundedRectangle(cornerRadius: 16, style: .continuous)
+                                .fill(Color.volnaSurfaceSecondary)
+                                .frame(width: 140, height: 180)
+                        }
+                    }
+                }
             }
         }
+        .redacted(reason: .placeholder)
     }
 
     private var sourcesFooter: some View {
-        VStack(alignment: .leading, spacing: 10) {
+        VStack(alignment: .leading, spacing: 12) {
             HStack {
                 Text("Открытая музыка")
-                    .font(.volnaHeadline(16))
+                    .font(.system(size: 18, weight: .semibold, design: .default))
                     .foregroundStyle(Color.volnaTextPrimary)
                 Spacer()
                 NavigationLink {
                     SourcesView()
                 } label: {
                     Text("Источники")
-                        .font(.system(size: 12, weight: .semibold, design: .rounded))
+                        .font(.system(size: 14, weight: .semibold, design: .default))
                         .foregroundStyle(Color.volnaPurple)
                 }
             }
-            Text("VOLNA не хранит музыкальные файлы. Записи воспроизводятся напрямую из Jamendo, Internet Archive, Wikimedia Commons и других открытых каталогов. Лицензия указывается для каждой композиции отдельно.")
-                .font(.volnaBody(12))
+
+            Text("VOLNA воспроизводит записи из открытых каталогов. Лицензия указывается для каждой композиции отдельно.")
+                .font(.system(size: 13, weight: .regular, design: .default))
                 .foregroundStyle(Color.volnaTextTertiary)
                 .lineSpacing(3)
+                .fixedSize(horizontal: false, vertical: true)
 
-            HStack(spacing: 10) {
+            HStack(spacing: 8) {
                 ForEach(["jamendo", "internet_archive", "wikimedia_commons"], id: \.self) { id in
                     ProviderBadge(providerID: id, compact: false)
                 }
             }
         }
-        .volnaCard()
+        .volnaCard(cornerRadius: 20, padding: 16)
     }
 }
 

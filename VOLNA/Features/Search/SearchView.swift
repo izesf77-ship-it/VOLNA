@@ -13,7 +13,7 @@ struct SearchView: View {
     var body: some View {
         NavigationStack {
             ScrollView(showsIndicators: false) {
-                LazyVStack(alignment: .leading, spacing: 22) {
+                VStack(alignment: .leading, spacing: 20) {
                     header
                     searchField
                     filterRow
@@ -26,22 +26,16 @@ struct SearchView: View {
                         resultsContent
                     }
                 }
-                .padding(.horizontal, 18)
-                .padding(.top, 12)
-                .padding(.bottom, 148)
+                .padding(.horizontal, VolnaLayout.horizontalPadding)
+                .padding(.top, 8)
+                .padding(.bottom, 16)
             }
-            .background(VolnaBackground())
+            .volnaScreenLayout()
             .scrollDismissesKeyboard(.interactively)
             .toolbar(.hidden, for: .navigationBar)
-            .navigationDestination(for: Artist.self) { artist in
-                ArtistView(artist: artist)
-            }
-            .navigationDestination(for: Album.self) { album in
-                AlbumView(album: album)
-            }
-            .navigationDestination(for: Playlist.self) { playlist in
-                PlaylistDetailView(playlistID: playlist.id)
-            }
+            .navigationDestination(for: Artist.self) { ArtistView(artist: $0) }
+            .navigationDestination(for: Album.self) { AlbumView(album: $0) }
+            .navigationDestination(for: Playlist.self) { PlaylistDetailView(playlistID: $0.id) }
             .task(id: searchKey) {
                 let trimmed = query.trimmingCharacters(in: .whitespacesAndNewlines)
                 guard !trimmed.isEmpty else {
@@ -63,34 +57,34 @@ struct SearchView: View {
     // MARK: - Header
 
     private var header: some View {
-        HStack(alignment: .top) {
-            VStack(alignment: .leading, spacing: 6) {
+        HStack(alignment: .center) {
+            VStack(alignment: .leading, spacing: 4) {
                 Text("Поиск")
-                    .font(.volnaDisplay(32))
+                    .font(.system(size: 34, weight: .bold, design: .default))
                     .foregroundStyle(Color.volnaTextPrimary)
-                Text("Один запрос — все открытые источники")
-                    .font(.volnaBody(13))
-                    .foregroundStyle(Color.volnaTextTertiary)
+                Text("Музыка из открытых источников")
+                    .font(.system(size: 15, weight: .regular, design: .default))
+                    .foregroundStyle(Color.volnaTextSecondary)
             }
             Spacer()
-            NavigationLink {
-                SourcesView()
-            } label: {
+            NavigationLink { SourcesView() } label: {
                 Image(systemName: "slider.horizontal.3")
             }
             .buttonStyle(VolnaIconButtonStyle())
+            .accessibilityLabel("Источники")
         }
+        .padding(.top, 4)
     }
 
     private var searchField: some View {
-        HStack(spacing: 10) {
+        HStack(spacing: 12) {
             Image(systemName: "magnifyingglass")
-                .font(.system(size: 16, weight: .semibold))
+                .font(.system(size: 17, weight: .medium))
                 .foregroundStyle(isFocused ? Color.volnaPurple : Color.volnaTextTertiary)
 
             TextField("Песня, исполнитель или альбом", text: $query)
                 .focused($isFocused)
-                .font(.system(size: 15, weight: .medium, design: .rounded))
+                .font(.system(size: 16, weight: .regular, design: .default))
                 .foregroundStyle(Color.volnaTextPrimary)
                 .textInputAutocapitalization(.never)
                 .autocorrectionDisabled()
@@ -107,24 +101,24 @@ struct SearchView: View {
                     service.reset()
                 } label: {
                     Image(systemName: "xmark.circle.fill")
-                        .font(.system(size: 16))
+                        .font(.system(size: 18))
                         .foregroundStyle(Color.volnaTextTertiary)
                 }
                 .buttonStyle(.plain)
             } else if service.isSearching {
                 ProgressView()
                     .tint(Color.volnaPurple)
-                    .scaleEffect(0.8)
+                    .scaleEffect(0.85)
             }
         }
-        .padding(.horizontal, 15)
-        .padding(.vertical, 13)
+        .padding(.horizontal, 16)
+        .frame(height: 52)
         .background {
-            RoundedRectangle(cornerRadius: 17, style: .continuous)
-                .fill(Color.volnaSurface.opacity(0.9))
+            RoundedRectangle(cornerRadius: 16, style: .continuous)
+                .fill(Color.volnaSurface)
                 .overlay {
-                    RoundedRectangle(cornerRadius: 17, style: .continuous)
-                        .stroke(isFocused ? Color.volnaPurple.opacity(0.55) : Color.white.opacity(0.07), lineWidth: 1)
+                    RoundedRectangle(cornerRadius: 16, style: .continuous)
+                        .stroke(isFocused ? Color.volnaPurple.opacity(0.5) : Color.white.opacity(0.06), lineWidth: 1)
                 }
         }
         .animation(.easeInOut(duration: 0.2), value: isFocused)
@@ -133,50 +127,38 @@ struct SearchView: View {
     private var filterRow: some View {
         ScrollView(.horizontal, showsIndicators: false) {
             HStack(spacing: 8) {
-                VolnaChip(
-                    title: "Все языки",
-                    icon: "globe",
-                    isSelected: filters.language == nil
-                ) {
+                VolnaChip(title: "Все", icon: "globe", isSelected: filters.language == nil) {
                     filters.language = nil
                 }
-                VolnaChip(
-                    title: "Русское",
-                    icon: "character.book.closed",
-                    isSelected: filters.language == "ru"
-                ) {
+                VolnaChip(title: "Русское", icon: "music.note", isSelected: filters.language == "ru") {
                     filters.language = filters.language == "ru" ? nil : "ru"
                 }
-                Rectangle()
-                    .fill(Color.white.opacity(0.10))
-                    .frame(width: 1, height: 20)
-                ForEach(GenreCatalog.all) { genre in
-                    VolnaChip(
-                        title: genre.title,
-                        isSelected: filters.genre == genre.id
-                    ) {
-                        filters.genre = filters.genre == genre.id ? nil : genre.id
+
+                if !GenreCatalog.all.isEmpty {
+                    Divider()
+                        .frame(height: 20)
+                        .overlay(Color.white.opacity(0.1))
+                        .padding(.horizontal, 4)
+
+                    ForEach(GenreCatalog.all) { genre in
+                        VolnaChip(title: genre.title, isSelected: filters.genre == genre.id) {
+                            filters.genre = filters.genre == genre.id ? nil : genre.id
+                        }
                     }
                 }
             }
-            .padding(.vertical, 1)
+            .padding(.vertical, 2)
         }
+        .scrollClipDisabled()
     }
 
     // MARK: - Discovery
 
     private var discovery: some View {
-        VStack(alignment: .leading, spacing: 26) {
-            VStack(alignment: .leading, spacing: 12) {
-                SectionHeader(
-                    title: "Популярные запросы",
-                    subtitle: "Реальные запросы к открытым каталогам"
-                )
-                LazyVGrid(
-                    columns: [GridItem(.adaptive(minimum: 128), spacing: 8)],
-                    alignment: .leading,
-                    spacing: 8
-                ) {
+        VStack(alignment: .leading, spacing: VolnaLayout.sectionSpacing) {
+            VStack(alignment: .leading, spacing: 14) {
+                SectionHeader(title: "Популярные запросы")
+                LazyVGrid(columns: [GridItem(.adaptive(minimum: 140), spacing: 10)], spacing: 10) {
                     ForEach(SearchService.popularQueries, id: \.self) { item in
                         Button {
                             query = item
@@ -184,59 +166,50 @@ struct SearchView: View {
                         } label: {
                             HStack {
                                 Text(item)
-                                    .font(.system(size: 12, weight: .semibold, design: .rounded))
-                                    .foregroundStyle(Color.volnaTextSecondary)
+                                    .font(.system(size: 14, weight: .medium, design: .default))
+                                    .foregroundStyle(Color.volnaTextPrimary)
                                     .lineLimit(1)
                                 Spacer(minLength: 4)
                                 Image(systemName: "arrow.up.right")
-                                    .font(.system(size: 9, weight: .bold))
+                                    .font(.system(size: 10, weight: .semibold))
                                     .foregroundStyle(Color.volnaTextTertiary)
                             }
-                            .padding(.horizontal, 12)
-                            .padding(.vertical, 10)
-                            .background(Color.white.opacity(0.05))
-                            .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+                            .padding(.horizontal, 14)
+                            .padding(.vertical, 12)
+                            .background(Color.volnaSurface, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+                            .overlay {
+                                RoundedRectangle(cornerRadius: 14, style: .continuous)
+                                    .stroke(Color.white.opacity(0.05), lineWidth: 1)
+                            }
                         }
                         .buttonStyle(.plain)
                     }
                 }
             }
 
-            VStack(alignment: .leading, spacing: 12) {
-                SectionHeader(
-                    title: "Русская музыка",
-                    subtitle: "Приоритет русскоязычных записей: рок, рэп, инди, фолк и классика"
-                )
+            VStack(alignment: .leading, spacing: 14) {
+                SectionHeader(title: "Русская музыка", subtitle: "Подборки на русском языке")
                 ScrollView(.horizontal, showsIndicators: false) {
-                    HStack(spacing: 8) {
+                    HStack(spacing: 10) {
                         ForEach(SearchService.russianQueries, id: \.self) { item in
                             Button {
                                 query = item
                                 filters.language = "ru"
                                 isFocused = false
                             } label: {
-                                HStack(spacing: 6) {
-                                    Image(systemName: "waveform")
-                                        .font(.system(size: 10, weight: .bold))
-                                    Text(item)
-                                        .font(.system(size: 12, weight: .semibold, design: .rounded))
-                                }
-                                .foregroundStyle(Color.volnaTextPrimary)
-                                .padding(.horizontal, 13)
-                                .padding(.vertical, 9)
-                                .background {
-                                    Capsule()
-                                        .fill(Color.volnaPurple.opacity(0.16))
-                                        .overlay {
-                                            Capsule()
-                                                .stroke(Color.volnaPurple.opacity(0.25), lineWidth: 1)
-                                        }
-                                }
+                                Text(item)
+                                    .font(.system(size: 14, weight: .medium, design: .default))
+                                    .foregroundStyle(Color.volnaTextPrimary)
+                                    .padding(.horizontal, 16)
+                                    .padding(.vertical, 10)
+                                    .background(Color.volnaPurple.opacity(0.15), in: Capsule())
+                                    .overlay { Capsule().stroke(Color.volnaPurple.opacity(0.25), lineWidth: 1) }
                             }
                             .buttonStyle(.plain)
                         }
                     }
                 }
+                .scrollClipDisabled()
             }
 
             howItWorksCard
@@ -244,77 +217,67 @@ struct SearchView: View {
     }
 
     private var howItWorksCard: some View {
-        VStack(alignment: .leading, spacing: 14) {
-            HStack {
-                Image(systemName: "point.3.connected.trianglepath.dotted")
-                    .font(.system(size: 16, weight: .semibold))
+        VStack(alignment: .leading, spacing: 12) {
+            HStack(spacing: 10) {
+                Image(systemName: "waveform.badge.magnifyingglass")
+                    .font(.system(size: 18, weight: .medium))
                     .foregroundStyle(Color.volnaPurple)
                 Text("Как работает поиск")
-                    .font(.volnaHeadline(16))
+                    .font(.system(size: 17, weight: .semibold, design: .default))
                     .foregroundStyle(Color.volnaTextPrimary)
             }
-            Text("Запрос уходит параллельно во все включённые источники. Результаты объединяются, дубликаты склеиваются, а несколько аудиопотоков одной записи сохраняются. Если один источник недоступен, остальные продолжают работать.")
-                .font(.volnaBody(12))
+            Text("VOLNA ищет одновременно во всех включённых источниках и объединяет результаты. Лицензия и доступность указаны для каждого трека.")
+                .font(.system(size: 14, weight: .regular, design: .default))
                 .foregroundStyle(Color.volnaTextSecondary)
                 .lineSpacing(3)
+                .fixedSize(horizontal: false, vertical: true)
 
-            HStack(spacing: 8) {
-                Text("Включено: \(appState.settings.enabledProviderIDs.count) из \(MusicSourceCatalog.all.count)")
-                    .font(.system(size: 11, weight: .semibold, design: .rounded))
+            HStack {
+                Text("Активно: \(appState.settings.enabledProviderIDs.count) из \(MusicSourceCatalog.all.count)")
+                    .font(.system(size: 13, weight: .medium, design: .default))
                     .foregroundStyle(Color.volnaTextTertiary)
                 Spacer()
-                NavigationLink {
-                    SourcesView()
-                } label: {
+                NavigationLink { SourcesView() } label: {
                     Text("Настроить")
-                        .font(.system(size: 12, weight: .semibold, design: .rounded))
+                        .font(.system(size: 14, weight: .semibold, design: .default))
                         .foregroundStyle(Color.volnaPurple)
                 }
             }
         }
-        .volnaCard()
+        .volnaCard(cornerRadius: 20, padding: 16)
     }
 
     // MARK: - Results
 
     private var resultsContent: some View {
-        VStack(alignment: .leading, spacing: 20) {
-            HStack(alignment: .firstTextBaseline) {
+        VStack(alignment: .leading, spacing: 24) {
+            HStack(alignment: .center) {
                 Text("Результаты")
-                    .font(.volnaHeadline(20))
+                    .font(.system(size: 22, weight: .semibold, design: .default))
                     .foregroundStyle(Color.volnaTextPrimary)
-
                 if service.isSearching {
-                    ProgressView()
-                        .tint(Color.volnaPurple)
-                        .scaleEffect(0.7)
+                    ProgressView().tint(Color.volnaPurple).scaleEffect(0.8)
                 }
-
                 Spacer()
-
                 if !service.tracks.isEmpty {
-                    Text("\(service.tracks.count) треков")
-                        .font(.system(size: 11, weight: .semibold, design: .rounded))
-                        .foregroundStyle(Color.volnaTextTertiary)
+                    Text("\(service.tracks.count)")
+                        .font(.system(size: 13, weight: .semibold, design: .default))
+                        .foregroundStyle(Color.volnaTextSecondary)
+                        .padding(.horizontal, 10)
+                        .padding(.vertical, 4)
+                        .background(Color.white.opacity(0.06), in: Capsule())
                 }
             }
 
-            if !service.stats.isEmpty {
-                providerStats
-            }
-
-            if !service.issues.isEmpty {
-                issuesSection
-            }
+            if !service.stats.isEmpty { providerStats }
+            if !service.issues.isEmpty { issuesSection }
 
             if !service.artists.isEmpty {
-                VStack(alignment: .leading, spacing: 12) {
+                VStack(alignment: .leading, spacing: 14) {
                     SectionHeader(title: "Исполнители")
                     ScrollView(.horizontal, showsIndicators: false) {
-                        LazyHStack(spacing: 14) {
-                            ForEach(service.artists) { artist in
-                                ArtistCard(artist: artist)
-                            }
+                        LazyHStack(spacing: 16) {
+                            ForEach(service.artists) { ArtistCard(artist: $0) }
                         }
                     }
                     .scrollClipDisabled()
@@ -322,13 +285,11 @@ struct SearchView: View {
             }
 
             if !service.albums.isEmpty {
-                VStack(alignment: .leading, spacing: 12) {
+                VStack(alignment: .leading, spacing: 14) {
                     SectionHeader(title: "Альбомы")
                     ScrollView(.horizontal, showsIndicators: false) {
                         LazyHStack(alignment: .top, spacing: 14) {
-                            ForEach(service.albums) { album in
-                                AlbumCard(album: album)
-                            }
+                            ForEach(service.albums) { AlbumCard(album: $0) }
                         }
                     }
                     .scrollClipDisabled()
@@ -336,40 +297,34 @@ struct SearchView: View {
             }
 
             if !service.tracks.isEmpty {
-                VStack(alignment: .leading, spacing: 8) {
-                    HStack(alignment: .firstTextBaseline) {
+                VStack(alignment: .leading, spacing: 12) {
+                    HStack {
                         SectionHeader(title: "Треки")
                         Spacer()
                         if let first = service.tracks.first {
-                            Button {
-                                appState.play(first, in: service.tracks)
-                            } label: {
+                            Button { appState.play(first, in: service.tracks) } label: {
                                 Label("Играть", systemImage: "play.fill")
+                                    .font(.system(size: 14, weight: .semibold, design: .default))
                             }
                             .buttonStyle(VolnaPrimaryButtonStyle())
                         }
                     }
 
                     VStack(spacing: 0) {
-                        ForEach(service.tracks) { track in
+                        ForEach(Array(service.tracks.enumerated()), id: \.element.id) { index, track in
                             TrackRow(track: track, queue: service.tracks)
-                            if track.id != service.tracks.last?.id {
+                            if index < service.tracks.count - 1 {
                                 Divider()
-                                    .overlay(Color.white.opacity(0.055))
-                                    .padding(.leading, 62)
+                                    .overlay(Color.volnaSeparator)
+                                    .padding(.leading, 68)
                             }
                         }
                     }
+                    .padding(.vertical, 4)
                     .volnaCard(cornerRadius: 20, padding: 8)
                 }
             } else if !service.isSearching {
                 noResults
-            }
-
-            if let completed = service.lastCompletedAt {
-                Text("Поиск завершён в \(completed.formatted(date: .omitted, time: .shortened)). Источники и лицензии указаны рядом с каждой записью.")
-                    .font(.system(size: 10, weight: .regular, design: .rounded))
-                    .foregroundStyle(Color.volnaTextTertiary)
             }
         }
     }
@@ -379,45 +334,36 @@ struct SearchView: View {
             HStack(spacing: 8) {
                 ForEach(service.stats) { stat in
                     HStack(spacing: 6) {
-                        Circle()
-                            .fill(color(for: stat.id))
-                            .frame(width: 5, height: 5)
+                        Circle().fill(color(for: stat.id)).frame(width: 6, height: 6)
                         Text(stat.name)
-                            .font(.system(size: 10, weight: .semibold, design: .rounded))
+                            .font(.system(size: 12, weight: .medium, design: .default))
                             .foregroundStyle(Color.volnaTextSecondary)
                         Text("\(stat.count)")
-                            .font(.system(size: 10, weight: .bold, design: .rounded))
+                            .font(.system(size: 12, weight: .semibold, design: .default))
                             .foregroundStyle(Color.volnaTextPrimary)
-                        Text("\(stat.milliseconds) мс")
-                            .font(.system(size: 9, weight: .regular, design: .monospaced))
-                            .foregroundStyle(Color.volnaTextTertiary)
                     }
-                    .padding(.horizontal, 10)
-                    .padding(.vertical, 7)
-                    .background(Color.white.opacity(0.05))
-                    .clipShape(Capsule())
+                    .padding(.horizontal, 12)
+                    .padding(.vertical, 8)
+                    .background(Color.volnaSurface, in: Capsule())
                 }
             }
         }
+        .scrollClipDisabled()
     }
 
     private var issuesSection: some View {
-        VStack(alignment: .leading, spacing: 8) {
+        VStack(alignment: .leading, spacing: 10) {
             Button {
-                withAnimation(.easeInOut(duration: 0.2)) {
-                    showIssues.toggle()
-                }
+                withAnimation(.easeInOut(duration: 0.2)) { showIssues.toggle() }
             } label: {
-                HStack(spacing: 7) {
+                HStack(spacing: 8) {
                     Image(systemName: "exclamationmark.triangle.fill")
-                        .font(.system(size: 11, weight: .semibold))
                         .foregroundStyle(Color.volnaWarning)
                     Text("Недоступные источники: \(service.issues.count)")
-                        .font(.system(size: 12, weight: .semibold, design: .rounded))
+                        .font(.system(size: 14, weight: .medium, design: .default))
                         .foregroundStyle(Color.volnaTextSecondary)
                     Spacer()
                     Image(systemName: showIssues ? "chevron.up" : "chevron.down")
-                        .font(.system(size: 10, weight: .bold))
                         .foregroundStyle(Color.volnaTextTertiary)
                 }
                 .contentShape(Rectangle())
@@ -436,43 +382,38 @@ struct SearchView: View {
         EmptyStateView(
             icon: "magnifyingglass",
             title: "Ничего не найдено",
-            message: "Попробуйте другой запрос, отключите фильтр «Русское» или включите дополнительные источники. Некоторые каталоги лучше ищут латиницей.",
+            message: "Попробуйте другой запрос или измените фильтры. Некоторые каталоги лучше ищут по названию на латинице.",
             actionTitle: filters.language == "ru" ? "Искать на всех языках" : "Открыть источники",
             action: {
-                if filters.language == "ru" {
-                    filters.language = nil
-                } else {
-                    appState.selectedTab = .settings
-                }
+                if filters.language == "ru" { filters.language = nil }
+                else { appState.selectedTab = .settings }
             }
         )
     }
 
     private var loadingState: some View {
         VStack(alignment: .leading, spacing: 16) {
-            HStack(spacing: 10) {
+            HStack(spacing: 12) {
                 ProgressView().tint(Color.volnaPurple)
                 Text("Ищем во всех источниках…")
-                    .font(.volnaBody(13))
+                    .font(.system(size: 15, weight: .regular, design: .default))
                     .foregroundStyle(Color.volnaTextSecondary)
             }
+            .padding(.vertical, 8)
+
             ForEach(0..<6, id: \.self) { _ in
                 HStack(spacing: 12) {
-                    RoundedRectangle(cornerRadius: 12, style: .continuous)
-                        .fill(Color.white.opacity(0.05))
+                    RoundedRectangle(cornerRadius: 10, style: .continuous)
+                        .fill(Color.volnaSurfaceSecondary)
                         .frame(width: 52, height: 52)
-                    VStack(alignment: .leading, spacing: 7) {
-                        RoundedRectangle(cornerRadius: 4, style: .continuous)
-                            .fill(Color.white.opacity(0.07))
-                            .frame(width: 190, height: 11)
-                        RoundedRectangle(cornerRadius: 4, style: .continuous)
-                            .fill(Color.white.opacity(0.04))
-                            .frame(width: 120, height: 9)
+                    VStack(alignment: .leading, spacing: 8) {
+                        RoundedRectangle(cornerRadius: 4).fill(Color.volnaSurfaceSecondary).frame(height: 12)
+                        RoundedRectangle(cornerRadius: 4).fill(Color.volnaSurfaceSecondary).frame(width: 140, height: 10)
                     }
                 }
             }
         }
-        .padding(.top, 8)
+        .redacted(reason: .placeholder)
     }
 
     private func color(for providerID: String) -> Color {

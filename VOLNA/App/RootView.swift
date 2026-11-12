@@ -8,6 +8,7 @@ struct RootView: View {
 
         ZStack(alignment: .bottom) {
             VolnaBackground()
+                .ignoresSafeArea()
 
             Group {
                 switch appState.selectedTab {
@@ -21,10 +22,12 @@ struct RootView: View {
                     SettingsView()
                 }
             }
-            .transition(.opacity)
-            .animation(.easeInOut(duration: 0.18), value: appState.selectedTab)
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
+            .transition(.opacity.combined(with: .scale(scale: 0.995)))
+            .animation(.easeInOut(duration: 0.2), value: appState.selectedTab)
 
-            VStack(spacing: 10) {
+            // Floating bottom controls (mini player + tab bar)
+            VStack(spacing: VolnaLayout.floatingStackSpacing) {
                 if appState.player.currentTrack != nil {
                     MiniPlayerView()
                         .transition(.move(edge: .bottom).combined(with: .opacity))
@@ -32,8 +35,25 @@ struct RootView: View {
 
                 VolnaTabBar(selection: $state.selectedTab)
             }
-            .padding(.horizontal, 14)
-            .padding(.bottom, 6)
+            .padding(.horizontal, 16)
+            .padding(.top, 8)
+            .padding(.bottom, VolnaLayout.tabBarBottomMargin)
+            .background {
+                // Subtle fade so content doesn't clash with floating bar
+                LinearGradient(
+                    colors: [
+                        Color.volnaBackground.opacity(0),
+                        Color.volnaBackground.opacity(0.55),
+                        Color.volnaBackground.opacity(0.85)
+                    ],
+                    startPoint: .top,
+                    endPoint: .bottom
+                )
+                .frame(height: 220)
+                .frame(maxHeight: .infinity, alignment: .bottom)
+                .allowsHitTesting(false)
+                .ignoresSafeArea(edges: .bottom)
+            }
         }
         .ignoresSafeArea(.keyboard, edges: .bottom)
         .fullScreenCover(isPresented: $state.isPlayerPresented) {
@@ -45,62 +65,69 @@ struct RootView: View {
 
 struct VolnaTabBar: View {
     @Binding var selection: AppTab
+    @Namespace private var tabNamespace
 
     var body: some View {
-        HStack(spacing: 4) {
+        HStack(spacing: 0) {
             ForEach(AppTab.allCases, id: \.self) { tab in
+                let isSelected = tab == selection
                 Button {
-                    withAnimation(.spring(response: 0.32, dampingFraction: 0.8)) {
+                    withAnimation(.spring(response: 0.34, dampingFraction: 0.82)) {
                         selection = tab
                     }
                 } label: {
-                    VStack(spacing: 5) {
-                        Image(systemName: tab == selection ? tab.selectedIcon : tab.icon)
-                            .font(.system(size: 19, weight: .semibold))
-                            .frame(height: 22)
-                        Text(tab.title)
-                            .font(.system(size: 10, weight: .semibold, design: .rounded))
-                    }
-                    .foregroundStyle(tab == selection ? Color.volnaTextPrimary : Color.volnaTextTertiary)
-                    .frame(maxWidth: .infinity)
-                    .padding(.vertical, 9)
-                    .background {
-                        if tab == selection {
-                            RoundedRectangle(cornerRadius: 16, style: .continuous)
-                                .fill(
-                                    LinearGradient(
-                                        colors: [
-                                            Color.volnaPurple.opacity(0.30),
-                                            Color.volnaBlue.opacity(0.18)
-                                        ],
-                                        startPoint: .topLeading,
-                                        endPoint: .bottomTrailing
-                                    )
-                                )
-                                .overlay {
-                                    RoundedRectangle(cornerRadius: 16, style: .continuous)
-                                        .stroke(Color.white.opacity(0.10), lineWidth: 1)
-                                }
+                    VStack(spacing: 4) {
+                        ZStack {
+                            if isSelected {
+                                Capsule()
+                                    .fill(Color.volnaAccentGradient.opacity(0.22))
+                                    .frame(width: 56, height: 32)
+                                    .matchedGeometryEffect(id: "tab-bg", in: tabNamespace)
+                            }
+                            Image(systemName: isSelected ? tab.selectedIcon : tab.icon)
+                                .font(.system(size: 20, weight: isSelected ? .semibold : .regular))
+                                .symbolRenderingMode(.hierarchical)
                         }
+                        .frame(height: 32)
+
+                        Text(tab.title)
+                            .font(.system(size: 10, weight: isSelected ? .semibold : .medium, design: .default))
+                            .lineLimit(1)
+                            .minimumScaleFactor(0.85)
                     }
+                    .foregroundStyle(isSelected ? Color.volnaTextPrimary : Color.volnaTextTertiary)
+                    .frame(maxWidth: .infinity)
+                    .frame(height: 54)
+                    .contentShape(Rectangle())
                 }
                 .buttonStyle(.plain)
+                .accessibilityLabel(tab.title)
+                .accessibilityAddTraits(isSelected ? .isSelected : [])
             }
         }
-        .padding(6)
+        .padding(.horizontal, 8)
+        .padding(.vertical, 6)
+        .frame(height: VolnaLayout.tabBarHeight)
         .background {
-            RoundedRectangle(cornerRadius: 22, style: .continuous)
+            RoundedRectangle(cornerRadius: 26, style: .continuous)
                 .fill(.ultraThinMaterial)
                 .overlay {
-                    RoundedRectangle(cornerRadius: 22, style: .continuous)
-                        .fill(Color.volnaSurface.opacity(0.72))
+                    RoundedRectangle(cornerRadius: 26, style: .continuous)
+                        .fill(Color.volnaSurfaceGlass)
                 }
-                .overlay {
-                    RoundedRectangle(cornerRadius: 22, style: .continuous)
-                        .stroke(Color.white.opacity(0.08), lineWidth: 1)
+                .overlay(alignment: .top) {
+                    RoundedRectangle(cornerRadius: 26, style: .continuous)
+                        .stroke(
+                            LinearGradient(
+                                colors: [Color.white.opacity(0.14), Color.white.opacity(0.04)],
+                                startPoint: .top,
+                                endPoint: .bottom
+                            ),
+                            lineWidth: 1
+                        )
                 }
         }
-        .shadow(color: .black.opacity(0.45), radius: 24, y: 10)
+        .shadow(color: .black.opacity(0.35), radius: 30, y: 12)
     }
 }
 

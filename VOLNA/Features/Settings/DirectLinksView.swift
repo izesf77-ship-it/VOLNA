@@ -88,11 +88,11 @@ struct DirectLinksView: View {
                     .frame(maxWidth: .infinity)
                 }
             }
-            .padding(.horizontal, 18)
+            .padding(.horizontal, VolnaLayout.horizontalPadding)
             .padding(.top, 14)
-            .padding(.bottom, 148)
+            .padding(.bottom, 16)
         }
-        .background(VolnaBackground())
+        .volnaScreenLayout()
         .navigationTitle("Прямые ссылки")
         .navigationBarTitleDisplayMode(.inline)
         .toolbarColorScheme(.dark, for: .navigationBar)

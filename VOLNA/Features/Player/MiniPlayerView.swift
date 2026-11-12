@@ -11,43 +11,40 @@ struct MiniPlayerView: View {
 
     var body: some View {
         VStack(spacing: 0) {
+            // Progress bar
             GeometryReader { geometry in
                 ZStack(alignment: .leading) {
-                    Capsule()
+                    Rectangle()
                         .fill(Color.white.opacity(0.08))
-                    Capsule()
+                    Rectangle()
                         .fill(Color.volnaAccentGradient)
                         .frame(width: max(0, geometry.size.width * progress))
                 }
             }
-            .frame(height: 2)
-            .padding(.horizontal, 14)
+            .frame(height: 3)
 
-            HStack(spacing: 10) {
+            HStack(spacing: 12) {
                 Button {
                     appState.showPlayer()
                 } label: {
-                    HStack(spacing: 10) {
+                    HStack(spacing: 12) {
                         ArtworkView(
                             url: player.currentTrack?.artworkURL,
-                            size: 42,
-                            cornerRadius: 11,
+                            size: 46,
+                            cornerRadius: 10,
                             showProgress: false
                         )
-                        VStack(alignment: .leading, spacing: 3) {
-                            Text(player.currentTrack?.title ?? "")
-                                .font(.system(size: 12, weight: .semibold, design: .rounded))
+
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text(player.currentTrack?.title ?? "Не воспроизводится")
+                                .font(.system(size: 14, weight: .semibold, design: .default))
                                 .foregroundStyle(Color.volnaTextPrimary)
                                 .lineLimit(1)
-                            HStack(spacing: 5) {
-                                Text(player.currentTrack?.artist ?? "")
-                                    .font(.system(size: 10, weight: .regular, design: .rounded))
-                                    .foregroundStyle(Color.volnaTextSecondary)
-                                    .lineLimit(1)
-                                if let track = player.currentTrack {
-                                    ProviderBadge(providerID: track.providerID)
-                                }
-                            }
+
+                            Text(player.currentTrack?.artist ?? "")
+                                .font(.system(size: 12, weight: .regular, design: .default))
+                                .foregroundStyle(Color.volnaTextSecondary)
+                                .lineLimit(1)
                         }
                         Spacer(minLength: 0)
                     }
@@ -55,45 +52,54 @@ struct MiniPlayerView: View {
                 }
                 .buttonStyle(.plain)
 
-                Button {
-                    player.togglePlayPause()
-                } label: {
-                    Image(systemName: player.isPlaying ? "pause.fill" : "play.fill")
-                        .font(.system(size: 17, weight: .bold))
-                        .foregroundStyle(Color.volnaTextPrimary)
-                        .frame(width: 34, height: 38)
-                }
-                .buttonStyle(.plain)
+                HStack(spacing: 4) {
+                    Button {
+                        player.togglePlayPause()
+                    } label: {
+                        Image(systemName: player.isPlaying ? "pause.fill" : "play.fill")
+                            .font(.system(size: 20, weight: .semibold))
+                            .foregroundStyle(Color.volnaTextPrimary)
+                            .frame(width: 44, height: 44)
+                            .contentShape(Rectangle())
+                    }
+                    .buttonStyle(.plain)
 
-                Button {
-                    player.next()
-                } label: {
-                    Image(systemName: "forward.fill")
-                        .font(.system(size: 15, weight: .semibold))
-                        .foregroundStyle(Color.volnaTextPrimary)
-                        .frame(width: 34, height: 38)
+                    Button {
+                        player.next()
+                    } label: {
+                        Image(systemName: "forward.fill")
+                            .font(.system(size: 18, weight: .semibold))
+                            .foregroundStyle(Color.volnaTextPrimary)
+                            .frame(width: 44, height: 44)
+                            .contentShape(Rectangle())
+                    }
+                    .buttonStyle(.plain)
                 }
-                .buttonStyle(.plain)
             }
-            .padding(.horizontal, 10)
-            .padding(.vertical, 7)
+            .padding(.horizontal, 12)
+            .padding(.vertical, 8)
+            .frame(height: VolnaLayout.miniPlayerHeight - 3)
         }
+        .frame(height: VolnaLayout.miniPlayerHeight)
         .background {
-            RoundedRectangle(cornerRadius: 20, style: .continuous)
+            RoundedRectangle(cornerRadius: 18, style: .continuous)
                 .fill(.ultraThinMaterial)
                 .overlay {
-                    RoundedRectangle(cornerRadius: 20, style: .continuous)
-                        .fill(Color.volnaSurface.opacity(0.84))
+                    RoundedRectangle(cornerRadius: 18, style: .continuous)
+                        .fill(Color.volnaSurfaceGlass)
                 }
                 .overlay {
-                    RoundedRectangle(cornerRadius: 20, style: .continuous)
-                        .stroke(Color.white.opacity(0.09), lineWidth: 1)
+                    RoundedRectangle(cornerRadius: 18, style: .continuous)
+                        .stroke(Color.white.opacity(0.10), lineWidth: 1)
                 }
         }
-        .clipShape(RoundedRectangle(cornerRadius: 20, style: .continuous))
-        .shadow(color: .black.opacity(0.5), radius: 20, y: 8)
+        .clipShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
+        .shadow(color: .black.opacity(0.4), radius: 24, y: 10)
+        .contentShape(Rectangle())
         .onTapGesture {
             appState.showPlayer()
         }
+        .accessibilityElement(children: .contain)
+        .accessibilityLabel("Мини-плеер")
     }
 }

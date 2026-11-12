@@ -1,52 +1,62 @@
 import SwiftUI
 
 extension Color {
-    // MARK: - Backgrounds
-    static let volnaBackground = Color(hex: "07060B")
-    static let volnaBackgroundSoft = Color(hex: "0D0B13")
-    static let volnaSurface = Color(hex: "14111D")
-    static let volnaSurfaceSecondary = Color(hex: "1D1929")
-    static let volnaElevated = Color(hex: "272236")
+    // MARK: - Backgrounds (Refined Premium Dark)
+    static let volnaBackground = Color(hex: "05050A")
+    static let volnaBackgroundSoft = Color(hex: "08070D")
+    static let volnaSurface = Color(hex: "101018")
+    static let volnaSurfaceSecondary = Color(hex: "161622")
+    static let volnaElevated = Color(hex: "1F1F2B")
+    static let volnaSurfaceGlass = Color(hex: "15151F").opacity(0.92)
+    static let volnaSeparator = Color.white.opacity(0.06)
 
-    // MARK: - Accents
-    static let volnaPurple = Color(hex: "7C5CFF")
-    static let volnaBlue = Color(hex: "3AA0FF")
-    static let volnaMagenta = Color(hex: "FF5CA8")
-    static let volnaCyan = Color(hex: "5FE3F2")
-    static let volnaMint = Color(hex: "27D796")
-    static let volnaAmber = Color(hex: "F5B84B")
+    // MARK: - Accents (Subtle, premium)
+    static let volnaPurple = Color(hex: "7B61FF")
+    static let volnaBlue = Color(hex: "4C9BFF")
+    static let volnaMagenta = Color(hex: "FF5C9D")
+    static let volnaCyan = Color(hex: "5FE7FF")
+    static let volnaMint = Color(hex: "32E6A0")
+    static let volnaAmber = Color(hex: "FFB63B")
+    static let volnaRed = Color(hex: "FF5F5F")
 
     // MARK: - Text
-    static let volnaTextPrimary = Color.white.opacity(0.96)
-    static let volnaTextSecondary = Color.white.opacity(0.64)
-    static let volnaTextTertiary = Color.white.opacity(0.40)
+    static let volnaTextPrimary = Color.white.opacity(0.98)
+    static let volnaTextSecondary = Color.white.opacity(0.72)
+    static let volnaTextTertiary = Color.white.opacity(0.48)
+    static let volnaTextQuaternary = Color.white.opacity(0.32)
 
     // MARK: - Semantic
-    static let volnaSuccess = Color(hex: "35D07F")
-    static let volnaWarning = Color(hex: "F5B84B")
-    static let volnaError = Color(hex: "FF6B6B")
+    static let volnaSuccess = Color(hex: "32E6A0")
+    static let volnaWarning = Color(hex: "FFB63B")
+    static let volnaError = Color(hex: "FF5F5F")
 
     // MARK: - Gradients
     static let volnaAccentGradient = LinearGradient(
-        colors: [volnaPurple, volnaBlue],
+        colors: [Color(hex: "7B61FF"), Color(hex: "4C9BFF")],
         startPoint: .topLeading,
         endPoint: .bottomTrailing
     )
 
     static let volnaRussianGradient = LinearGradient(
-        colors: [Color(hex: "7C5CFF"), Color(hex: "FF5CA8")],
+        colors: [Color(hex: "7B61FF"), Color(hex: "FF5C9D")],
         startPoint: .topLeading,
         endPoint: .bottomTrailing
     )
 
     static let volnaWarmGradient = LinearGradient(
-        colors: [Color(hex: "F5B84B"), Color(hex: "FF7A59")],
+        colors: [Color(hex: "FFB63B"), Color(hex: "FF7A3D")],
         startPoint: .topLeading,
         endPoint: .bottomTrailing
     )
 
     static let volnaCoolGradient = LinearGradient(
-        colors: [Color(hex: "3AA0FF"), Color(hex: "5FE3F2")],
+        colors: [Color(hex: "4C9BFF"), Color(hex: "5FE7FF")],
+        startPoint: .topLeading,
+        endPoint: .bottomTrailing
+    )
+
+    static let volnaHeroGradient = LinearGradient(
+        colors: [Color(hex: "7B61FF").opacity(0.95), Color(hex: "4C9BFF").opacity(0.85)],
         startPoint: .topLeading,
         endPoint: .bottomTrailing
     )
@@ -79,31 +89,68 @@ extension Color {
     }
 }
 
+// MARK: - Layout Constants
+
+enum VolnaLayout {
+    static let horizontalPadding: CGFloat = 20
+    static let sectionSpacing: CGFloat = 28
+    static let itemSpacing: CGFloat = 16
+    static let smallSpacing: CGFloat = 12
+    static let cardRadius: CGFloat = 20
+    static let cardRadiusLarge: CGFloat = 28
+    static let cardPadding: CGFloat = 16
+    static let buttonHeight: CGFloat = 48
+    static let minTouchTarget: CGFloat = 44
+
+    // Tab bar geometry (used for content insets)
+    static let tabBarHeight: CGFloat = 66
+    static let tabBarBottomMargin: CGFloat = 8
+    static let miniPlayerHeight: CGFloat = 68
+    static let floatingStackSpacing: CGFloat = 10
+
+    /// Estimated total height of floating bottom UI (mini-player + tab bar + spacing + safe padding)
+    static var contentBottomInset: CGFloat {
+        // base: tab bar + margin; mini-player adds more when present but we reserve space safely
+        tabBarHeight + tabBarBottomMargin + 24
+    }
+
+    static var contentBottomInsetWithPlayer: CGFloat {
+        miniPlayerHeight + floatingStackSpacing + tabBarHeight + tabBarBottomMargin + 24
+    }
+}
+
 struct VolnaBackground: View {
     var body: some View {
         ZStack {
             Color.volnaBackground
 
-            Circle()
-                .fill(Color.volnaPurple.opacity(0.20))
-                .frame(width: 460, height: 460)
-                .blur(radius: 130)
-                .offset(x: -170, y: -300)
+            // Subtle ambient gradients for depth
+            RadialGradient(
+                colors: [Color.volnaPurple.opacity(0.18), .clear],
+                center: .topLeading,
+                startRadius: 0,
+                endRadius: 420
+            )
+            .offset(x: -120, y: -180)
 
-            Circle()
-                .fill(Color.volnaBlue.opacity(0.15))
-                .frame(width: 420, height: 420)
-                .blur(radius: 140)
-                .offset(x: 190, y: -120)
+            RadialGradient(
+                colors: [Color.volnaBlue.opacity(0.12), .clear],
+                center: .topTrailing,
+                startRadius: 0,
+                endRadius: 380
+            )
+            .offset(x: 120, y: -60)
 
-            Circle()
-                .fill(Color.volnaMagenta.opacity(0.08))
-                .frame(width: 320, height: 320)
-                .blur(radius: 120)
-                .offset(x: 120, y: 380)
+            RadialGradient(
+                colors: [Color.volnaMagenta.opacity(0.06), .clear],
+                center: .bottomTrailing,
+                startRadius: 0,
+                endRadius: 340
+            )
+            .offset(x: 80, y: 200)
 
             LinearGradient(
-                colors: [Color.clear, Color.volnaBackground.opacity(0.85), Color.volnaBackground],
+                colors: [Color.clear, Color.volnaBackground.opacity(0.4), Color.volnaBackground.opacity(0.85)],
                 startPoint: .top,
                 endPoint: .bottom
             )
@@ -113,94 +160,183 @@ struct VolnaBackground: View {
 }
 
 extension Font {
+    // Display / Titles
+    static func volnaLargeTitle(_ size: CGFloat = 34) -> Font {
+        .system(size: size, weight: .bold, design: .default)
+    }
+    static func volnaTitle(_ size: CGFloat = 28) -> Font {
+        .system(size: size, weight: .bold, design: .default)
+    }
+    static func volnaTitle2(_ size: CGFloat = 22) -> Font {
+        .system(size: size, weight: .semibold, design: .default)
+    }
+    static func volnaTitle3(_ size: CGFloat = 20) -> Font {
+        .system(size: size, weight: .semibold, design: .default)
+    }
+
+    // Legacy/compat
     static func volnaDisplay(_ size: CGFloat) -> Font {
-        .system(size: size, weight: .bold, design: .rounded)
+        .system(size: size, weight: .bold, design: .default)
     }
-
     static func volnaHeadline(_ size: CGFloat) -> Font {
-        .system(size: size, weight: .semibold, design: .rounded)
+        .system(size: size, weight: .semibold, design: .default)
+    }
+    static func volnaBody(_ size: CGFloat) -> Font {
+        .system(size: size, weight: .regular, design: .default)
     }
 
-    static func volnaBody(_ size: CGFloat) -> Font {
-        .system(size: size, weight: .regular, design: .rounded)
-    }
+    // Body
+    static let volnaBodyLarge = Font.system(size: 17, weight: .regular, design: .default)
+    static let volnaBodyMedium = Font.system(size: 15, weight: .regular, design: .default)
+    static let volnaBodySmall = Font.system(size: 13, weight: .regular, design: .default)
+
+    // Labels / UI
+    static let volnaLabel = Font.system(size: 15, weight: .medium, design: .default)
+    static let volnaLabelBold = Font.system(size: 15, weight: .semibold, design: .default)
+    static let volnaCaption = Font.system(size: 12, weight: .medium, design: .default)
+    static let volnaCaptionSmall = Font.system(size: 11, weight: .medium, design: .default)
+    static let volnaMicro = Font.system(size: 10, weight: .medium, design: .default)
 }
 
 // MARK: - Card style
 
 struct VolnaCardModifier: ViewModifier {
-    var cornerRadius: CGFloat = 22
-    var padding: CGFloat = 16
+    var cornerRadius: CGFloat = VolnaLayout.cardRadius
+    var padding: CGFloat = VolnaLayout.cardPadding
+    var style: CardStyle = .elevated
+
+    enum CardStyle {
+        case elevated
+        case glass
+        case flat
+    }
 
     func body(content: Content) -> some View {
         content
             .padding(padding)
             .background {
-                RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
-                    .fill(.ultraThinMaterial)
-                    .overlay {
-                        RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
-                            .fill(Color.volnaSurface.opacity(0.78))
-                    }
-                    .overlay {
-                        RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
-                            .stroke(Color.white.opacity(0.07), lineWidth: 1)
-                    }
+                switch style {
+                case .elevated:
+                    RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
+                        .fill(Color.volnaSurface)
+                        .overlay {
+                            RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
+                                .stroke(Color.white.opacity(0.06), lineWidth: 1)
+                        }
+                case .glass:
+                    RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
+                        .fill(.ultraThinMaterial)
+                        .overlay {
+                            RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
+                                .fill(Color.volnaSurface.opacity(0.55))
+                        }
+                        .overlay {
+                            RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
+                                .stroke(Color.white.opacity(0.08), lineWidth: 1)
+                        }
+                case .flat:
+                    RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
+                        .fill(Color.volnaSurfaceSecondary)
+                }
             }
     }
 }
 
 extension View {
-    func volnaCard(cornerRadius: CGFloat = 22, padding: CGFloat = 16) -> some View {
-        modifier(VolnaCardModifier(cornerRadius: cornerRadius, padding: padding))
+    func volnaCard(
+        cornerRadius: CGFloat = VolnaLayout.cardRadius,
+        padding: CGFloat = VolnaLayout.cardPadding,
+        style: VolnaCardModifier.CardStyle = .elevated
+    ) -> some View {
+        modifier(VolnaCardModifier(cornerRadius: cornerRadius, padding: padding, style: style))
     }
 
     func volnaScreen() -> some View {
         scrollContentBackground(.hidden)
             .background(VolnaBackground())
-            .toolbarBackground(Color.volnaBackground.opacity(0.92), for: .navigationBar)
+            .toolbarBackground(Color.volnaBackground.opacity(0.96), for: .navigationBar)
             .toolbarBackground(.visible, for: .navigationBar)
             .toolbarColorScheme(.dark, for: .navigationBar)
     }
 
-    func volnaBottomInset() -> some View {
+    /// Reserve space for floating tab bar + optional mini player
+    func volnaBottomInset(hasPlayer: Bool = false) -> some View {
         safeAreaInset(edge: .bottom) {
-            Color.clear.frame(height: 118)
+            Color.clear
+                .frame(height: hasPlayer ? VolnaLayout.contentBottomInsetWithPlayer : VolnaLayout.contentBottomInset)
+                .allowsHitTesting(false)
         }
     }
+}
+
+/// Applies screen background and bottom inset that accounts for mini-player/tab bar
+struct VolnaScreenModifier: ViewModifier {
+    @Environment(AppState.self) private var appState
+
+    func body(content: Content) -> some View {
+        content
+            .background(VolnaBackground())
+            .safeAreaInset(edge: .bottom) {
+                Color.clear
+                    .frame(
+                        height: appState.player.currentTrack != nil
+                            ? VolnaLayout.contentBottomInsetWithPlayer
+                            : VolnaLayout.contentBottomInset
+                    )
+                    .allowsHitTesting(false)
+            }
+    }
+}
+
+extension View {
+    func volnaScreenLayout() -> some View {
+        modifier(VolnaScreenModifier())
+    }
+}
 }
 
 struct VolnaPrimaryButtonStyle: ButtonStyle {
     func makeBody(configuration: Configuration) -> some View {
         configuration.label
-            .font(.system(size: 15, weight: .semibold, design: .rounded))
+            .font(.system(size: 15, weight: .semibold, design: .default))
             .foregroundStyle(.white)
-            .padding(.horizontal, 18)
-            .padding(.vertical, 12)
-            .background(
-                LinearGradient(
-                    colors: [Color.volnaPurple, Color.volnaBlue],
-                    startPoint: .topLeading,
-                    endPoint: .bottomTrailing
-                )
-            )
+            .padding(.horizontal, 20)
+            .frame(minHeight: 44)
+            .background(Color.volnaAccentGradient)
             .clipShape(Capsule())
-            .opacity(configuration.isPressed ? 0.75 : 1)
-            .scaleEffect(configuration.isPressed ? 0.97 : 1)
+            .opacity(configuration.isPressed ? 0.82 : 1)
+            .scaleEffect(configuration.isPressed ? 0.98 : 1)
+            .animation(.easeOut(duration: 0.15), value: configuration.isPressed)
+    }
+}
+
+struct VolnaSecondaryButtonStyle: ButtonStyle {
+    func makeBody(configuration: Configuration) -> some View {
+        configuration.label
+            .font(.system(size: 15, weight: .semibold, design: .default))
+            .foregroundStyle(Color.volnaTextPrimary)
+            .padding(.horizontal, 20)
+            .frame(minHeight: 44)
+            .background(Color.white.opacity(0.08))
+            .clipShape(Capsule())
+            .opacity(configuration.isPressed ? 0.72 : 1)
+            .scaleEffect(configuration.isPressed ? 0.98 : 1)
             .animation(.easeOut(duration: 0.15), value: configuration.isPressed)
     }
 }
 
 struct VolnaIconButtonStyle: ButtonStyle {
+    var size: CGFloat = 44
+
     func makeBody(configuration: Configuration) -> some View {
         configuration.label
             .font(.system(size: 17, weight: .semibold))
             .foregroundStyle(Color.volnaTextPrimary)
-            .frame(width: 42, height: 42)
-            .background(Color.white.opacity(0.07))
+            .frame(width: size, height: size)
+            .background(Color.white.opacity(0.08))
             .clipShape(Circle())
-            .opacity(configuration.isPressed ? 0.65 : 1)
-            .scaleEffect(configuration.isPressed ? 0.95 : 1)
+            .opacity(configuration.isPressed ? 0.7 : 1)
+            .scaleEffect(configuration.isPressed ? 0.96 : 1)
             .animation(.easeOut(duration: 0.15), value: configuration.isPressed)
     }
 }

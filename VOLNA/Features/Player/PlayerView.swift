@@ -15,30 +15,35 @@ struct PlayerView: View {
     var body: some View {
         GeometryReader { geometry in
             ZStack {
-                VolnaBackground()
-                artworkBackdrop(width: geometry.size.width, height: geometry.size.height)
+                playerBackground(width: geometry.size.width, height: geometry.size.height)
 
                 if let track = player.currentTrack {
-                    ScrollView(showsIndicators: false) {
-                        VStack(spacing: 18) {
-                            topBar
-                            artwork(track: track, size: min(geometry.size.width - 64, 320))
-                            trackInfo(track: track)
-                            progressSection
-                            controls
-                            secondaryActions(track: track)
-                            queuePreview
-                            sourceCard(track: track)
-                            Color.clear.frame(height: 20)
+                    VStack(spacing: 0) {
+                        topBar
+                            .padding(.horizontal, 20)
+                            .padding(.top, 8)
+
+                        ScrollView(showsIndicators: false) {
+                            VStack(spacing: 24) {
+                                artworkSection(track: track, containerWidth: geometry.size.width)
+                                trackInfo(track: track)
+                                progressSection
+                                controls
+                                secondaryActions(track: track)
+                                queuePreview
+                                sourceCard(track: track)
+                            }
+                            .padding(.horizontal, 24)
+                            .padding(.top, 16)
+                            .padding(.bottom, 40)
                         }
-                        .padding(.horizontal, 24)
-                        .padding(.top, 8)
                     }
                 } else {
                     emptyState
                 }
             }
         }
+        .preferredColorScheme(.dark)
         .sheet(isPresented: $showLyrics) {
             if let track = player.currentTrack {
                 LyricsView(track: track)
@@ -55,8 +60,10 @@ struct PlayerView: View {
 
     // MARK: - Background
 
-    private func artworkBackdrop(width: CGFloat, height: CGFloat) -> some View {
+    private func playerBackground(width: CGFloat, height: CGFloat) -> some View {
         ZStack {
+            Color.volnaBackground
+
             if let url = player.currentTrack?.artworkURL {
                 AsyncImage(url: url) { phase in
                     if case .success(let image) = phase {
@@ -69,16 +76,17 @@ struct PlayerView: View {
                 }
                 .frame(width: width, height: height)
                 .clipped()
-                .blur(radius: 78)
-                .opacity(0.34)
-                .scaleEffect(1.25)
+                .blur(radius: 100)
+                .opacity(0.35)
+                .scaleEffect(1.3)
+                .saturation(1.2)
             }
 
             LinearGradient(
                 colors: [
-                    Color.volnaBackground.opacity(0.18),
-                    Color.volnaBackground.opacity(0.72),
-                    Color.volnaBackground
+                    Color.black.opacity(0.2),
+                    Color.volnaBackground.opacity(0.6),
+                    Color.volnaBackground.opacity(0.95)
                 ],
                 startPoint: .top,
                 endPoint: .bottom
@@ -91,41 +99,37 @@ struct PlayerView: View {
 
     private var topBar: some View {
         HStack {
-            Button {
-                dismiss()
-            } label: {
+            Button { dismiss() } label: {
                 Image(systemName: "chevron.down")
-                    .font(.system(size: 15, weight: .bold))
+                    .font(.system(size: 18, weight: .semibold))
                     .foregroundStyle(Color.volnaTextPrimary)
-                    .frame(width: 40, height: 40)
-                    .background(Color.white.opacity(0.07))
-                    .clipShape(Circle())
+                    .frame(width: 44, height: 44)
+                    .background(.ultraThinMaterial, in: Circle())
+                    .overlay { Circle().stroke(Color.white.opacity(0.1), lineWidth: 1) }
             }
             .buttonStyle(.plain)
 
             Spacer()
 
             VStack(spacing: 2) {
-                Text("СЕЙЧАС ИГРАЕТ")
-                    .font(.system(size: 9, weight: .heavy, design: .rounded))
-                    .tracking(1.6)
+                Text("Сейчас играет")
+                    .font(.system(size: 12, weight: .medium, design: .default))
                     .foregroundStyle(Color.volnaTextTertiary)
-                Text(player.currentTrack?.providerDisplayName ?? "VOLNA")
-                    .font(.system(size: 11, weight: .semibold, design: .rounded))
-                    .foregroundStyle(Color.volnaTextSecondary)
+                if let track = player.currentTrack {
+                    Text(MusicSourceCatalog.info(for: track.providerID)?.name ?? "VOLNA")
+                        .font(.system(size: 13, weight: .semibold, design: .default))
+                        .foregroundStyle(Color.volnaTextSecondary)
+                        .lineLimit(1)
+                }
             }
 
             Spacer()
 
             Menu {
-                Button {
-                    showLyrics = true
-                } label: {
-                    Label("Текст песни", systemImage: "text.quote")
+                Button { showLyrics = true } label: {
+                    Label("Текст песни", systemImage: "quote.bubble")
                 }
-                Button {
-                    showQueue = true
-                } label: {
+                Button { showQueue = true } label: {
                     Label("Очередь", systemImage: "list.bullet")
                 }
                 if let page = player.currentTrack?.sourcePageURL {
@@ -133,66 +137,77 @@ struct PlayerView: View {
                         Label("Страница источника", systemImage: "safari")
                     }
                 }
-                Divider()
-                Button(role: .destructive) {
-                    player.clearQueue()
-                } label: {
-                    Label("Очистить очередь", systemImage: "trash")
-                }
             } label: {
                 Image(systemName: "ellipsis")
-                    .font(.system(size: 16, weight: .bold))
+                    .font(.system(size: 18, weight: .semibold))
                     .foregroundStyle(Color.volnaTextPrimary)
-                    .frame(width: 40, height: 40)
-                    .background(Color.white.opacity(0.07))
-                    .clipShape(Circle())
+                    .frame(width: 44, height: 44)
+                    .background(.ultraThinMaterial, in: Circle())
+                    .overlay { Circle().stroke(Color.white.opacity(0.1), lineWidth: 1) }
             }
         }
     }
 
     // MARK: - Artwork / info
 
-    private func artwork(track: Track, size: CGFloat) -> some View {
-        ArtworkView(url: track.artworkURL, size: size, cornerRadius: 30)
-            .shadow(color: Color.volnaPurple.opacity(0.28), radius: 34, y: 18)
-            .padding(.top, 4)
+    private func artworkSection(track: Track, containerWidth: CGFloat) -> some View {
+        let size = min(containerWidth - 48, 340)
+        return ArtworkView(url: track.artworkURL, size: size, cornerRadius: 24)
+            .shadow(color: .black.opacity(0.4), radius: 40, y: 20)
+            .shadow(color: Color.volnaPurple.opacity(0.2), radius: 30, y: 10)
+            .frame(maxWidth: .infinity)
+            .padding(.top, 8)
+            .animation(.easeInOut(duration: 0.3), value: track.id)
     }
 
     private func trackInfo(track: Track) -> some View {
-        VStack(spacing: 7) {
-            Text(track.title)
-                .font(.system(size: 23, weight: .bold, design: .rounded))
-                .foregroundStyle(Color.volnaTextPrimary)
-                .multilineTextAlignment(.center)
-                .lineLimit(3)
-            Text(track.artist)
-                .font(.system(size: 15, weight: .medium, design: .rounded))
-                .foregroundStyle(Color.volnaTextSecondary)
-                .lineLimit(2)
+        VStack(spacing: 8) {
+            HStack(alignment: .top, spacing: 12) {
+                VStack(alignment: .leading, spacing: 4) {
+                    Text(track.title)
+                        .font(.system(size: 24, weight: .bold, design: .default))
+                        .foregroundStyle(Color.volnaTextPrimary)
+                        .lineLimit(2)
+                        .multilineTextAlignment(.leading)
+                        .fixedSize(horizontal: false, vertical: true)
 
-            HStack(spacing: 7) {
+                    Text(track.artist)
+                        .font(.system(size: 18, weight: .medium, design: .default))
+                        .foregroundStyle(Color.volnaTextSecondary)
+                        .lineLimit(2)
+                        .multilineTextAlignment(.leading)
+                }
+                .frame(maxWidth: .infinity, alignment: .leading)
+
+                Button {
+                    _ = appState.toggleFavorite(track)
+                } label: {
+                    Image(systemName: appState.library.isFavorite(track) ? "heart.fill" : "heart")
+                        .font(.system(size: 24, weight: .medium))
+                        .foregroundStyle(appState.library.isFavorite(track) ? Color.volnaMagenta : Color.volnaTextSecondary)
+                        .frame(width: 44, height: 44)
+                }
+                .buttonStyle(.plain)
+            }
+
+            HStack(spacing: 8) {
                 ProviderBadge(providerID: track.providerID, compact: false)
                 if track.license.isKnownOpenLicense {
                     LicenseBadge(license: track.license)
                 } else {
                     Text("Лицензия неизвестна")
-                        .font(.system(size: 9, weight: .semibold, design: .rounded))
+                        .font(.system(size: 11, weight: .medium, design: .default))
                         .foregroundStyle(Color.volnaTextTertiary)
-                        .padding(.horizontal, 7)
-                        .padding(.vertical, 3)
-                        .background(Color.white.opacity(0.06))
-                        .clipShape(Capsule())
+                        .padding(.horizontal, 8)
+                        .padding(.vertical, 4)
+                        .background(Color.white.opacity(0.06), in: Capsule())
                 }
-                if track.availableStreams.count > 1 {
-                    Text("\(track.availableStreams.count) потока")
-                        .font(.system(size: 9, weight: .semibold, design: .rounded))
-                        .foregroundStyle(Color.volnaBlue)
-                }
+                Spacer()
             }
 
             if let error = player.playbackError {
                 ErrorBanner(message: error)
-                    .padding(.top, 6)
+                    .padding(.top, 4)
             }
         }
     }
@@ -200,7 +215,7 @@ struct PlayerView: View {
     // MARK: - Progress
 
     private var progressSection: some View {
-        VStack(spacing: 6) {
+        VStack(spacing: 8) {
             Slider(
                 value: Binding(
                     get: { isScrubbing ? scrubValue : player.currentTime },
@@ -217,7 +232,7 @@ struct PlayerView: View {
                     }
                 }
             )
-            .tint(Color.volnaPurple)
+            .tint(.white)
             .disabled(player.duration <= 0)
             .opacity(player.duration <= 0 ? 0.4 : 1)
 
@@ -225,143 +240,135 @@ struct PlayerView: View {
                 Text(formatTime(isScrubbing ? scrubValue : player.currentTime))
                 Spacer()
                 if player.isBuffering {
-                    ProgressView()
-                        .tint(Color.volnaTextTertiary)
-                        .scaleEffect(0.55)
+                    ProgressView().tint(Color.volnaTextTertiary).scaleEffect(0.6)
+                    Spacer()
                 }
-                Text(player.duration > 0 ? "-\(formatTime(max(0, player.duration - (isScrubbing ? scrubValue : player.currentTime))))" : "--:--")
+                Text(player.duration > 0 ? formatTime(player.duration) : "--:--")
             }
-            .font(.system(size: 10, weight: .medium, design: .monospaced))
+            .font(.system(size: 12, weight: .medium, design: .monospaced))
             .foregroundStyle(Color.volnaTextTertiary)
         }
     }
 
     private var controls: some View {
         HStack(spacing: 0) {
-            Button {
-                player.toggleShuffle()
-            } label: {
+            Button { player.toggleShuffle() } label: {
                 Image(systemName: "shuffle")
-                    .font(.system(size: 17, weight: .semibold))
+                    .font(.system(size: 20, weight: .medium))
                     .foregroundStyle(player.isShuffled ? Color.volnaPurple : Color.volnaTextSecondary)
-                    .frame(maxWidth: .infinity)
+                    .frame(width: 44, height: 44)
             }
             .buttonStyle(.plain)
+            .frame(maxWidth: .infinity)
 
-            Button {
-                player.previous()
-            } label: {
+            Button { player.previous() } label: {
                 Image(systemName: "backward.fill")
-                    .font(.system(size: 22, weight: .semibold))
+                    .font(.system(size: 28, weight: .semibold))
                     .foregroundStyle(Color.volnaTextPrimary)
-                    .frame(width: 58, height: 52)
+                    .frame(width: 56, height: 56)
             }
             .buttonStyle(.plain)
+            .frame(maxWidth: .infinity)
 
-            Button {
-                player.togglePlayPause()
-            } label: {
+            Button { player.togglePlayPause() } label: {
                 ZStack {
                     Circle()
-                        .fill(Color.volnaAccentGradient)
-                        .frame(width: 76, height: 76)
-                        .shadow(color: Color.volnaPurple.opacity(0.5), radius: 20, y: 6)
+                        .fill(Color.white)
+                        .frame(width: 72, height: 72)
+                        .shadow(color: .white.opacity(0.15), radius: 16, y: 4)
                     if player.isBuffering {
-                        ProgressView()
-                            .tint(.white)
-                            .scaleEffect(1.05)
+                        ProgressView().tint(.black).scaleEffect(1.1)
                     } else {
                         Image(systemName: player.isPlaying ? "pause.fill" : "play.fill")
-                            .font(.system(size: 27, weight: .bold))
-                            .foregroundStyle(.white)
+                            .font(.system(size: 28, weight: .bold))
+                            .foregroundStyle(.black)
                             .offset(x: player.isPlaying ? 0 : 2)
                     }
                 }
             }
             .buttonStyle(.plain)
+            .frame(maxWidth: .infinity)
 
-            Button {
-                player.next()
-            } label: {
+            Button { player.next() } label: {
                 Image(systemName: "forward.fill")
-                    .font(.system(size: 22, weight: .semibold))
+                    .font(.system(size: 28, weight: .semibold))
                     .foregroundStyle(Color.volnaTextPrimary)
-                    .frame(width: 58, height: 52)
+                    .frame(width: 56, height: 56)
             }
             .buttonStyle(.plain)
+            .frame(maxWidth: .infinity)
 
-            Button {
-                player.cycleRepeatMode()
-            } label: {
+            Button { player.cycleRepeatMode() } label: {
                 Image(systemName: player.repeatMode == .one ? "repeat.1" : "repeat")
-                    .font(.system(size: 17, weight: .semibold))
+                    .font(.system(size: 20, weight: .medium))
                     .foregroundStyle(player.repeatMode == .off ? Color.volnaTextSecondary : Color.volnaPurple)
-                    .frame(maxWidth: .infinity)
+                    .frame(width: 44, height: 44)
             }
             .buttonStyle(.plain)
+            .frame(maxWidth: .infinity)
         }
-        .padding(.vertical, 2)
+        .padding(.vertical, 8)
     }
 
     private func secondaryActions(track: Track) -> some View {
-        HStack(spacing: 26) {
-            Button {
-                _ = appState.toggleFavorite(track)
-            } label: {
-                Image(systemName: appState.library.isFavorite(track) ? "heart.fill" : "heart")
-                    .font(.system(size: 19, weight: .semibold))
-                    .foregroundStyle(appState.library.isFavorite(track) ? Color.volnaMagenta : Color.volnaTextSecondary)
-            }
-            .buttonStyle(.plain)
-
-            Button {
-                showLyrics = true
-            } label: {
-                Image(systemName: "text.quote")
-                    .font(.system(size: 19, weight: .semibold))
-                    .foregroundStyle(Color.volnaTextSecondary)
-            }
-            .buttonStyle(.plain)
-
-            Button {
-                showQueue = true
-            } label: {
-                Image(systemName: "list.bullet")
-                    .font(.system(size: 19, weight: .semibold))
-                    .foregroundStyle(Color.volnaTextSecondary)
-            }
-            .buttonStyle(.plain)
-
-            Menu {
-                Button {
-                    player.playNext(track)
-                } label: {
-                    Label("Играть следующим", systemImage: "text.line.first.and.arrowtriangle.forward")
+        HStack(spacing: 0) {
+            Button { showLyrics = true } label: {
+                VStack(spacing: 6) {
+                    Image(systemName: "quote.bubble")
+                        .font(.system(size: 20, weight: .medium))
+                    Text("Текст")
+                        .font(.system(size: 11, weight: .medium, design: .default))
                 }
-                Button {
-                    player.appendToQueue(track)
-                } label: {
-                    Label("Добавить в очередь", systemImage: "text.badge.plus")
+                .foregroundStyle(Color.volnaTextSecondary)
+                .frame(maxWidth: .infinity)
+                .frame(height: 50)
+            }
+            .buttonStyle(.plain)
+
+            Button { showQueue = true } label: {
+                VStack(spacing: 6) {
+                    Image(systemName: "list.bullet")
+                        .font(.system(size: 20, weight: .medium))
+                    Text("Очередь")
+                        .font(.system(size: 11, weight: .medium, design: .default))
                 }
-                Button {
-                    appState.library.createPlaylist(title: "Мой плейлист")
-                    if let playlist = appState.library.playlists.first {
-                        appState.library.addTrack(track, to: playlist.id)
+                .foregroundStyle(Color.volnaTextSecondary)
+                .frame(maxWidth: .infinity)
+                .frame(height: 50)
+            }
+            .buttonStyle(.plain)
+
+            if let page = track.sourcePageURL {
+                ShareLink(item: page) {
+                    VStack(spacing: 6) {
+                        Image(systemName: "square.and.arrow.up")
+                            .font(.system(size: 20, weight: .medium))
+                        Text("Источник")
+                            .font(.system(size: 11, weight: .medium, design: .default))
                     }
-                } label: {
-                    Label("В новый плейлист", systemImage: "music.note.list")
-                }
-                if let page = track.sourcePageURL {
-                    ShareLink(item: page) {
-                        Label("Открыть источник", systemImage: "safari")
-                    }
-                }
-            } label: {
-                Image(systemName: "ellipsis.circle")
-                    .font(.system(size: 19, weight: .semibold))
                     .foregroundStyle(Color.volnaTextSecondary)
+                    .frame(maxWidth: .infinity)
+                    .frame(height: 50)
+                }
+            } else {
+                Button {
+                    if let page = track.sourcePageURL { /* no-op fallback */ }
+                } label: {
+                    VStack(spacing: 6) {
+                        Image(systemName: "info.circle")
+                            .font(.system(size: 20, weight: .medium))
+                        Text("Инфо")
+                            .font(.system(size: 11, weight: .medium, design: .default))
+                    }
+                    .foregroundStyle(Color.volnaTextTertiary)
+                    .frame(maxWidth: .infinity)
+                    .frame(height: 50)
+                }
+                .buttonStyle(.plain)
+                .disabled(true)
             }
         }
+        .padding(.vertical, 4)
     }
 
     // MARK: - Queue preview
@@ -369,32 +376,36 @@ struct PlayerView: View {
     private var queuePreview: some View {
         Group {
             if player.queue.count > 1 {
-                Button {
-                    showQueue = true
-                } label: {
-                    HStack(spacing: 12) {
+                Button { showQueue = true } label: {
+                    HStack(spacing: 14) {
                         Image(systemName: "list.bullet")
-                            .font(.system(size: 13, weight: .semibold))
+                            .font(.system(size: 16, weight: .medium))
                             .foregroundStyle(Color.volnaPurple)
+                            .frame(width: 36, height: 36)
+                            .background(Color.volnaPurple.opacity(0.12), in: RoundedRectangle(cornerRadius: 10, style: .continuous))
+
                         VStack(alignment: .leading, spacing: 3) {
                             Text("Очередь · \(player.queue.count)")
-                                .font(.system(size: 12, weight: .semibold, design: .rounded))
+                                .font(.system(size: 14, weight: .semibold, design: .default))
                                 .foregroundStyle(Color.volnaTextPrimary)
                             if let next = nextTrack {
-                                Text("Далее: \(next.title) — \(next.artist)")
-                                    .font(.system(size: 10, weight: .regular, design: .rounded))
-                                    .foregroundStyle(Color.volnaTextTertiary)
+                                Text("Далее: \(next.title)")
+                                    .font(.system(size: 13, weight: .regular, design: .default))
+                                    .foregroundStyle(Color.volnaTextSecondary)
                                     .lineLimit(1)
                             }
                         }
                         Spacer()
                         Image(systemName: "chevron.right")
-                            .font(.system(size: 11, weight: .bold))
+                            .font(.system(size: 13, weight: .semibold))
                             .foregroundStyle(Color.volnaTextTertiary)
                     }
-                    .padding(13)
-                    .background(Color.white.opacity(0.045))
-                    .clipShape(RoundedRectangle(cornerRadius: 15, style: .continuous))
+                    .padding(14)
+                    .background(Color.white.opacity(0.05), in: RoundedRectangle(cornerRadius: 18, style: .continuous))
+                    .overlay {
+                        RoundedRectangle(cornerRadius: 18, style: .continuous)
+                            .stroke(Color.white.opacity(0.06), lineWidth: 1)
+                    }
                 }
                 .buttonStyle(.plain)
             }
@@ -405,102 +416,83 @@ struct PlayerView: View {
         let queue = player.queue
         guard queue.count > 1 else { return nil }
         let nextIndex = player.currentIndex + 1
-        if queue.indices.contains(nextIndex) {
-            return queue[nextIndex]
-        }
-        if player.repeatMode == .all {
-            return queue.first
-        }
+        if queue.indices.contains(nextIndex) { return queue[nextIndex] }
+        if player.repeatMode == .all { return queue.first }
         return nil
     }
 
     // MARK: - Source card
 
     private func sourceCard(track: Track) -> some View {
-        VStack(alignment: .leading, spacing: 12) {
+        VStack(alignment: .leading, spacing: 14) {
             HStack {
                 Text("Источник и лицензия")
-                    .font(.volnaHeadline(14))
+                    .font(.system(size: 17, weight: .semibold, design: .default))
                     .foregroundStyle(Color.volnaTextPrimary)
                 Spacer()
                 ProviderBadge(providerID: track.providerID, compact: false)
             }
 
-            SourceDetailRow(
-                icon: "waveform",
-                title: "Поток",
-                value: track.primaryStream?.format.displayName ?? "Недоступен",
-                tint: .volnaBlue
-            )
-            SourceDetailRow(
-                icon: "arrow.down.circle",
-                title: "Скачивание",
-                value: track.isDownloadAllowed ? "Разрешено источником" : "Не разрешено",
-                tint: track.isDownloadAllowed ? .volnaMint : .volnaTextTertiary
-            )
-            SourceDetailRow(
-                icon: "checkmark.seal",
-                title: "Лицензия",
-                value: track.license.isKnownOpenLicense ? track.license.displayName : "Неизвестна — не считается свободной",
-                tint: track.license.isKnownOpenLicense ? .volnaMint : .volnaWarning
-            )
+            VStack(spacing: 12) {
+                SourceDetailRow(icon: "waveform", title: "Формат", value: track.primaryStream?.format.displayName ?? "Недоступен", tint: .volnaBlue)
+                SourceDetailRow(icon: "arrow.down.circle", title: "Скачивание", value: track.isDownloadAllowed ? "Разрешено" : "Не разрешено", tint: track.isDownloadAllowed ? .volnaMint : .volnaTextTertiary)
+                SourceDetailRow(icon: "checkmark.seal", title: "Лицензия", value: track.license.isKnownOpenLicense ? track.license.displayName : "Неизвестна", tint: track.license.isKnownOpenLicense ? .volnaMint : .volnaWarning)
+            }
 
             if let attribution = track.attribution, !attribution.isEmpty {
                 Text(attribution)
-                    .font(.volnaBody(10))
+                    .font(.system(size: 12, weight: .regular, design: .default))
                     .foregroundStyle(Color.volnaTextTertiary)
                     .lineSpacing(2)
+                    .fixedSize(horizontal: false, vertical: true)
             }
 
             if track.availableStreams.count > 1 {
                 Button {
-                    withAnimation(.easeInOut(duration: 0.2)) {
-                        showStreams.toggle()
-                    }
+                    withAnimation(.easeInOut(duration: 0.2)) { showStreams.toggle() }
                 } label: {
                     HStack {
                         Text("Доступные потоки (\(track.availableStreams.count))")
-                            .font(.system(size: 11, weight: .semibold, design: .rounded))
+                            .font(.system(size: 14, weight: .medium, design: .default))
                             .foregroundStyle(Color.volnaPurple)
                         Spacer()
                         Image(systemName: showStreams ? "chevron.up" : "chevron.down")
-                            .font(.system(size: 9, weight: .bold))
+                            .font(.system(size: 12, weight: .semibold))
                             .foregroundStyle(Color.volnaTextTertiary)
                     }
                 }
                 .buttonStyle(.plain)
 
                 if showStreams {
-                    VStack(alignment: .leading, spacing: 6) {
+                    VStack(spacing: 8) {
                         ForEach(track.availableStreams) { stream in
                             HStack {
                                 ProviderBadge(providerID: stream.providerID)
                                 Text(stream.format.displayName)
-                                    .font(.system(size: 10, weight: .medium, design: .rounded))
+                                    .font(.system(size: 13, weight: .regular, design: .default))
                                     .foregroundStyle(Color.volnaTextSecondary)
                                 Spacer()
-                                Text(stream.availability == .available ? "доступен" : "недоступен")
-                                    .font(.system(size: 9, weight: .medium, design: .rounded))
+                                Text(stream.availability == .available ? "Доступен" : "Недоступен")
+                                    .font(.system(size: 12, weight: .medium, design: .default))
                                     .foregroundStyle(stream.availability == .available ? Color.volnaMint : Color.volnaTextTertiary)
                             }
                         }
                     }
-                    .padding(.top, 2)
                 }
             }
 
             if let page = track.sourcePageURL {
                 Link(destination: page) {
-                    HStack(spacing: 5) {
+                    HStack(spacing: 6) {
                         Image(systemName: "safari")
                         Text("Страница источника")
                     }
-                    .font(.system(size: 11, weight: .semibold, design: .rounded))
+                    .font(.system(size: 14, weight: .semibold, design: .default))
                     .foregroundStyle(Color.volnaBlue)
                 }
             }
         }
-        .volnaCard(cornerRadius: 20, padding: 15)
+        .volnaCard(cornerRadius: 20, padding: 16)
     }
 
     // MARK: - Empty
@@ -509,16 +501,14 @@ struct PlayerView: View {
         VStack(spacing: 16) {
             Spacer()
             EmptyStateView(
-                icon: "waveform",
+                icon: "play.circle",
                 title: "Ничего не играет",
                 message: "Выберите трек в поиске или на главной странице.",
                 actionTitle: "Закрыть"
-            ) {
-                dismiss()
-            }
+            ) { dismiss() }
+            .padding(.horizontal, 24)
             Spacer()
         }
-        .padding(24)
     }
 
     private func formatTime(_ time: TimeInterval) -> String {

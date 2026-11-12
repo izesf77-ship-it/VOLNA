@@ -5,36 +5,38 @@ struct FavoritesView: View {
 
     var body: some View {
         ScrollView(showsIndicators: false) {
-            VStack(alignment: .leading, spacing: 18) {
+            VStack(alignment: .leading, spacing: 20) {
                 if appState.library.favorites.isEmpty {
                     EmptyStateView(
                         icon: "heart",
                         title: "В избранном пусто",
-                        message: "Нажмите сердечко рядом с треком в поиске, на главной или в плеере.",
+                        message: "Нажмите сердечко рядом с треком, чтобы добавить его сюда.",
                         actionTitle: "Перейти к поиску"
                     ) {
                         appState.selectedTab = .search
                     }
+                    .padding(.top, 40)
                 } else {
                     header
                     VStack(spacing: 0) {
-                        ForEach(appState.library.favorites) { track in
+                        ForEach(Array(appState.library.favorites.enumerated()), id: \.element.id) { index, track in
                             TrackRow(track: track, queue: appState.library.favorites)
-                            if track.id != appState.library.favorites.last?.id {
+                            if index < appState.library.favorites.count - 1 {
                                 Divider()
-                                    .overlay(Color.white.opacity(0.055))
-                                    .padding(.leading, 62)
+                                    .overlay(Color.volnaSeparator)
+                                    .padding(.leading, 68)
                             }
                         }
                     }
+                    .padding(.vertical, 4)
                     .volnaCard(cornerRadius: 20, padding: 8)
                 }
             }
-            .padding(.horizontal, 18)
-            .padding(.top, 14)
-            .padding(.bottom, 148)
+            .padding(.horizontal, VolnaLayout.horizontalPadding)
+            .padding(.top, 12)
+            .padding(.bottom, 16)
         }
-        .background(VolnaBackground())
+        .volnaScreenLayout()
         .navigationTitle("Избранное")
         .navigationBarTitleDisplayMode(.inline)
         .toolbarColorScheme(.dark, for: .navigationBar)
@@ -88,47 +90,47 @@ struct HistoryView: View {
 
     var body: some View {
         ScrollView(showsIndicators: false) {
-            VStack(alignment: .leading, spacing: 18) {
+            VStack(alignment: .leading, spacing: 20) {
                 if appState.library.history.isEmpty {
                     EmptyStateView(
                         icon: "clock",
                         title: "История пуста",
-                        message: "Здесь появятся треки, которые вы слушали. История хранится только на устройстве.",
+                        message: "Здесь появятся треки, которые вы слушали.",
                         actionTitle: "Перейти к поиску"
                     ) {
                         appState.selectedTab = .search
                     }
+                    .padding(.top, 40)
                 } else {
                     HStack {
                         Text("\(appState.library.history.count) записей")
-                            .font(.volnaBody(12))
+                            .font(.system(size: 14, weight: .medium, design: .default))
                             .foregroundStyle(Color.volnaTextTertiary)
                         Spacer()
-                        Button("Очистить") {
-                            confirmClear = true
-                        }
-                        .font(.system(size: 12, weight: .semibold, design: .rounded))
-                        .foregroundStyle(Color.volnaError)
+                        Button("Очистить") { confirmClear = true }
+                            .font(.system(size: 14, weight: .semibold, design: .default))
+                            .foregroundStyle(Color.volnaError)
                     }
 
                     VStack(spacing: 0) {
-                        ForEach(appState.library.history) { track in
+                        ForEach(Array(appState.library.history.enumerated()), id: \.element.id) { index, track in
                             TrackRow(track: track, queue: appState.library.history)
-                            if track.id != appState.library.history.last?.id {
+                            if index < appState.library.history.count - 1 {
                                 Divider()
-                                    .overlay(Color.white.opacity(0.055))
-                                    .padding(.leading, 62)
+                                    .overlay(Color.volnaSeparator)
+                                    .padding(.leading, 68)
                             }
                         }
                     }
+                    .padding(.vertical, 4)
                     .volnaCard(cornerRadius: 20, padding: 8)
                 }
             }
-            .padding(.horizontal, 18)
-            .padding(.top, 14)
-            .padding(.bottom, 148)
+            .padding(.horizontal, VolnaLayout.horizontalPadding)
+            .padding(.top, 12)
+            .padding(.bottom, 16)
         }
-        .background(VolnaBackground())
+        .volnaScreenLayout()
         .navigationTitle("История")
         .navigationBarTitleDisplayMode(.inline)
         .toolbarColorScheme(.dark, for: .navigationBar)

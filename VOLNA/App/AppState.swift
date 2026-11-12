@@ -290,19 +290,19 @@ enum AppTab: String, CaseIterable, Hashable {
 
     var icon: String {
         switch self {
-        case .home: return "waveform"
+        case .home: return "house"
         case .search: return "magnifyingglass"
-        case .library: return "square.stack.fill"
-        case .settings: return "slider.horizontal.3"
+        case .library: return "square.stack"
+        case .settings: return "gearshape"
         }
     }
 
     var selectedIcon: String {
         switch self {
-        case .home: return "waveform"
+        case .home: return "house.fill"
         case .search: return "magnifyingglass"
         case .library: return "square.stack.fill"
-        case .settings: return "slider.horizontal.3"
+        case .settings: return "gearshape.fill"
         }
     }
 }

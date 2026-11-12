@@ -19,11 +19,11 @@ struct SettingsView: View {
                     aboutCard
                     footer
                 }
-                .padding(.horizontal, 18)
+                .padding(.horizontal, VolnaLayout.horizontalPadding)
                 .padding(.top, 12)
-                .padding(.bottom, 148)
+                .padding(.bottom, 16)
             }
-            .background(VolnaBackground())
+            .volnaScreenLayout()
             .toolbar(.hidden, for: .navigationBar)
             .navigationDestination(for: String.self) { destination in
                 switch destination {
@@ -54,11 +54,20 @@ struct SettingsView: View {
     }
 
     private var header: some View {
-        ScreenHeader(
-            title: "Настройки",
-            subtitle: "Без аккаунта, рекламы и облака",
-            eyebrow: "VOLNA \(appState.appVersion)"
-        )
+        VStack(alignment: .leading, spacing: 6) {
+            Text("VOLNA \(appState.appVersion)")
+                .font(.system(size: 11, weight: .semibold, design: .default))
+                .tracking(1.2)
+                .foregroundStyle(Color.volnaTextTertiary)
+            Text("Настройки")
+                .font(.system(size: 34, weight: .bold, design: .default))
+                .foregroundStyle(Color.volnaTextPrimary)
+            Text("Без аккаунта, рекламы и облака")
+                .font(.system(size: 15, weight: .regular, design: .default))
+                .foregroundStyle(Color.volnaTextSecondary)
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(.top, 4)
     }
 
     private var sourcesCard: some View {

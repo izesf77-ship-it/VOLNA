@@ -8,19 +8,19 @@ struct LibraryView: View {
     var body: some View {
         NavigationStack {
             ScrollView(showsIndicators: false) {
-                VStack(alignment: .leading, spacing: 24) {
+                VStack(alignment: .leading, spacing: VolnaLayout.sectionSpacing) {
                     header
+                        .padding(.top, 8)
                     stats
                     playlistsSection
                     favoritesSection
                     historySection
                     localDataFooter
                 }
-                .padding(.horizontal, 18)
-                .padding(.top, 12)
-                .padding(.bottom, 148)
+                .padding(.horizontal, VolnaLayout.horizontalPadding)
+                .padding(.bottom, 16)
             }
-            .background(VolnaBackground())
+            .volnaScreenLayout()
             .toolbar(.hidden, for: .navigationBar)
             .navigationDestination(for: Playlist.self) { playlist in
                 PlaylistDetailView(playlistID: playlist.id)
@@ -41,12 +41,15 @@ struct LibraryView: View {
     }
 
     private var header: some View {
-        HStack(alignment: .top) {
-            ScreenHeader(
-                title: "Медиатека",
-                subtitle: "Избранное, плейлисты и история — только на этом устройстве",
-                eyebrow: "Ваша коллекция"
-            )
+        HStack(alignment: .center) {
+            VStack(alignment: .leading, spacing: 4) {
+                Text("Медиатека")
+                    .font(.system(size: 34, weight: .bold, design: .default))
+                    .foregroundStyle(Color.volnaTextPrimary)
+                Text("Ваша музыка и плейлисты")
+                    .font(.system(size: 15, weight: .regular, design: .default))
+                    .foregroundStyle(Color.volnaTextSecondary)
+            }
             Spacer()
             Button {
                 newPlaylistTitle = ""
@@ -55,6 +58,7 @@ struct LibraryView: View {
                 Image(systemName: "plus")
             }
             .buttonStyle(VolnaIconButtonStyle())
+            .accessibilityLabel("Создать плейлист")
         }
     }
 

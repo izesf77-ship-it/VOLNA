@@ -49,11 +49,11 @@ struct ArtistView: View {
                     .volnaCard(cornerRadius: 20, padding: 8)
                 }
             }
-            .padding(.horizontal, 18)
+            .padding(.horizontal, VolnaLayout.horizontalPadding)
             .padding(.top, 14)
-            .padding(.bottom, 148)
+            .padding(.bottom, 16)
         }
-        .background(VolnaBackground())
+        .volnaScreenLayout()
         .navigationTitle(artist.name)
         .navigationBarTitleDisplayMode(.inline)
         .toolbarColorScheme(.dark, for: .navigationBar)

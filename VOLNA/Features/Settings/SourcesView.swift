@@ -85,11 +85,11 @@ struct SourcesView: View {
                     .lineSpacing(2)
                     .padding(.horizontal, 4)
             }
-            .padding(.horizontal, 18)
+            .padding(.horizontal, VolnaLayout.horizontalPadding)
             .padding(.top, 14)
-            .padding(.bottom, 148)
+            .padding(.bottom, 16)
         }
-        .background(VolnaBackground())
+        .volnaScreenLayout()
         .navigationTitle("Музыкальные источники")
         .navigationBarTitleDisplayMode(.inline)
         .toolbarColorScheme(.dark, for: .navigationBar)

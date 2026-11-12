@@ -53,9 +53,9 @@ struct PlaylistDetailView: View {
                         .volnaCard(cornerRadius: 20, padding: 8)
                     }
                 }
-                .padding(.horizontal, 18)
+                .padding(.horizontal, VolnaLayout.horizontalPadding)
                 .padding(.top, 14)
-                .padding(.bottom, 148)
+                .padding(.bottom, 16)
             } else {
                 EmptyStateView(
                     icon: "questionmark.folder",
@@ -68,7 +68,7 @@ struct PlaylistDetailView: View {
                 .padding(18)
             }
         }
-        .background(VolnaBackground())
+        .volnaScreenLayout()
         .navigationTitle(playlist?.title ?? "Плейлист")
         .navigationBarTitleDisplayMode(.inline)
         .toolbarColorScheme(.dark, for: .navigationBar)
