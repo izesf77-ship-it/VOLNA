@@ -1,224 +1,152 @@
 import Foundation
+import Observation
 
-/// Сервис управления локальной медиатекой
-actor LibraryService {
-    private let fileManager = FileManager.default
-    private let libraryDirectory: URL
-    
-    // State
-    private var favorites: Set<String> = []
-    private var playlists: [Playlist] = []
-    private var history: [Track] = []
-    
+/// Локальная медиатека VOLNA. Всё хранится в JSON-файле в Documents.
+/// Никаких баз данных, аккаунтов и серверов.
+@MainActor
+@Observable
+final class LibraryService {
+    private(set) var favorites: [Track] = []
+    private(set) var playlists: [Playlist] = []
+    private(set) var history: [Track] = []
+    private(set) var lastError: String?
+
+    private let fileURL: URL
+
     init() {
-        // Get documents directory
-        let documentsURL = fileManager.urls(
-            for: .documentDirectory,
-            in: .userDomainMask
-        ).first!
-        
-        self.libraryDirectory = documentsURL.appendingPathComponent("Library")
-        
-        // Create library directory if needed
-        try? fileManager.createDirectory(
-            at: libraryDirectory,
-            withIntermediateDirectories: true
-        )
-        
-        // Load data
-        Task {
-            await loadLibrary()
-        }
+        let documents = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask).first
+            ?? URL(fileURLWithPath: NSTemporaryDirectory())
+        self.fileURL = documents
+            .appendingPathComponent("VOLNA", isDirectory: true)
+            .appendingPathComponent("library.json")
+        load()
     }
-    
+
     // MARK: - Favorites
-    
-    func isFavorite(trackID: String) -> Bool {
-        favorites.contains(trackID)
+
+    func isFavorite(_ track: Track) -> Bool {
+        favorites.contains { $0.id == track.id }
     }
-    
-    func toggleFavorite(trackID: String) {
-        if favorites.contains(trackID) {
-            favorites.remove(trackID)
-        } else {
-            favorites.insert(trackID)
+
+    @discardableResult
+    func toggleFavorite(_ track: Track) -> Bool {
+        if let index = favorites.firstIndex(where: { $0.id == track.id }) {
+            favorites.remove(at: index)
+            save()
+            return false
         }
-        saveFavorites()
+        favorites.insert(track, at: 0)
+        save()
+        return true
     }
-    
-    func addFavorite(trackID: String) {
-        favorites.insert(trackID)
-        saveFavorites()
+
+    func removeFavorite(id: String) {
+        favorites.removeAll { $0.id == id }
+        save()
     }
-    
-    func removeFavorite(trackID: String) {
-        favorites.remove(trackID)
-        saveFavorites()
-    }
-    
-    func getFavorites() -> Set<String> {
-        favorites
-    }
-    
+
     // MARK: - Playlists
-    
-    func getPlaylists() -> [Playlist] {
-        playlists
-    }
-    
+
+    @discardableResult
     func createPlaylist(title: String) -> Playlist {
-        let playlist = Playlist(title: title)
-        playlists.append(playlist)
-        savePlaylists()
+        let clean = title.trimmingCharacters(in: .whitespacesAndNewlines)
+        let fallback = "Плейлист \(playlists.count + 1)"
+        let playlist = Playlist(title: clean.isEmpty ? fallback : clean)
+        playlists.insert(playlist, at: 0)
+        save()
         return playlist
     }
-    
+
     func deletePlaylist(id: String) {
         playlists.removeAll { $0.id == id }
-        savePlaylists()
+        save()
     }
-    
+
+    func renamePlaylist(id: String, title: String) {
+        guard let index = playlists.firstIndex(where: { $0.id == id }) else { return }
+        let clean = title.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !clean.isEmpty else { return }
+        playlists[index].title = clean
+        playlists[index].modifiedAt = Date()
+        save()
+    }
+
     func addTrack(_ track: Track, to playlistID: String) {
-        guard let index = playlists.firstIndex(where: { $0.id == playlistID }) else {
-            return
+        guard let index = playlists.firstIndex(where: { $0.id == playlistID }) else { return }
+        guard !playlists[index].tracks.contains(where: { $0.id == track.id }) else { return }
+        playlists[index].tracks.append(track)
+        playlists[index].modifiedAt = Date()
+        if playlists[index].artworkURL == nil {
+            playlists[index].artworkURL = track.artworkURL
         }
-        
-        var playlist = playlists[index]
-        playlist.tracks.append(track)
-        playlist.modifiedAt = Date()
-        playlists[index] = playlist
-        
-        savePlaylists()
+        save()
     }
-    
-    func removeTrack(trackID: String, from playlistID: String) {
-        guard let index = playlists.firstIndex(where: { $0.id == playlistID }) else {
-            return
-        }
-        
-        var playlist = playlists[index]
-        playlist.tracks.removeAll { $0.id == trackID }
-        playlist.modifiedAt = Date()
-        playlists[index] = playlist
-        
-        savePlaylists()
+
+    func removeTrack(_ trackID: String, from playlistID: String) {
+        guard let index = playlists.firstIndex(where: { $0.id == playlistID }) else { return }
+        playlists[index].tracks.removeAll { $0.id == trackID }
+        playlists[index].modifiedAt = Date()
+        save()
     }
-    
+
+    func playlist(id: String) -> Playlist? {
+        playlists.first { $0.id == id }
+    }
+
     // MARK: - History
-    
-    func addToHistory(_ track: Track) {
-        // Remove if already in history
+
+    func recordPlayed(_ track: Track) {
         history.removeAll { $0.id == track.id }
-        
-        // Add to beginning
         history.insert(track, at: 0)
-        
-        // Limit history to 100 tracks
         if history.count > 100 {
             history = Array(history.prefix(100))
         }
-        
-        saveHistory()
+        save()
     }
-    
-    func getHistory() -> [Track] {
-        history
-    }
-    
+
     func clearHistory() {
         history.removeAll()
-        saveHistory()
+        save()
     }
-    
+
     // MARK: - Persistence
-    
-    private func loadLibrary() {
-        loadFavorites()
-        loadPlaylists()
-        loadHistory()
-    }
-    
-    private func loadFavorites() {
-        let url = libraryDirectory.appendingPathComponent("favorites.json")
-        guard let data = try? Data(contentsOf: url) else {
-            return
-        }
-        
+
+    private func load() {
+        guard FileManager.default.fileExists(atPath: fileURL.path) else { return }
         do {
-            let decoder = JSONDecoder()
-            favorites = try decoder.decode(Set<String>.self, from: data)
-            print("✅ Loaded \(favorites.count) favorites")
+            let data = try Data(contentsOf: fileURL)
+            let snapshot = try JSONDecoder().decode(LibrarySnapshot.self, from: data)
+            favorites = snapshot.favorites
+            playlists = snapshot.playlists
+            history = snapshot.history
         } catch {
-            print("❌ Failed to load favorites: \(error)")
+            lastError = "Не удалось загрузить медиатеку: \(error.localizedDescription)"
         }
     }
-    
-    private func saveFavorites() {
-        let url = libraryDirectory.appendingPathComponent("favorites.json")
-        
+
+    private func save() {
         do {
+            try FileManager.default.createDirectory(
+                at: fileURL.deletingLastPathComponent(),
+                withIntermediateDirectories: true
+            )
+            let snapshot = LibrarySnapshot(
+                favorites: favorites,
+                playlists: playlists,
+                history: history
+            )
             let encoder = JSONEncoder()
-            encoder.outputFormatting = .prettyPrinted
-            let data = try encoder.encode(favorites)
-            try data.write(to: url, options: .atomic)
+            encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
+            let data = try encoder.encode(snapshot)
+            try data.write(to: fileURL, options: .atomic)
         } catch {
-            print("❌ Failed to save favorites: \(error)")
+            lastError = "Не удалось сохранить медиатеку: \(error.localizedDescription)"
         }
     }
-    
-    private func loadPlaylists() {
-        let url = libraryDirectory.appendingPathComponent("playlists.json")
-        guard let data = try? Data(contentsOf: url) else {
-            return
-        }
-        
-        do {
-            let decoder = JSONDecoder()
-            playlists = try decoder.decode([Playlist].self, from: data)
-            print("✅ Loaded \(playlists.count) playlists")
-        } catch {
-            print("❌ Failed to load playlists: \(error)")
-        }
-    }
-    
-    private func savePlaylists() {
-        let url = libraryDirectory.appendingPathComponent("playlists.json")
-        
-        do {
-            let encoder = JSONEncoder()
-            encoder.outputFormatting = .prettyPrinted
-            let data = try encoder.encode(playlists)
-            try data.write(to: url, options: .atomic)
-        } catch {
-            print("❌ Failed to save playlists: \(error)")
-        }
-    }
-    
-    private func loadHistory() {
-        let url = libraryDirectory.appendingPathComponent("history.json")
-        guard let data = try? Data(contentsOf: url) else {
-            return
-        }
-        
-        do {
-            let decoder = JSONDecoder()
-            history = try decoder.decode([Track].self, from: data)
-            print("✅ Loaded \(history.count) history items")
-        } catch {
-            print("❌ Failed to load history: \(error)")
-        }
-    }
-    
-    private func saveHistory() {
-        let url = libraryDirectory.appendingPathComponent("history.json")
-        
-        do {
-            let encoder = JSONEncoder()
-            encoder.outputFormatting = .prettyPrinted
-            let data = try encoder.encode(history)
-            try data.write(to: url, options: .atomic)
-        } catch {
-            print("❌ Failed to save history: \(error)")
-        }
-    }
+}
+
+private struct LibrarySnapshot: Codable {
+    let favorites: [Track]
+    let playlists: [Playlist]
+    let history: [Track]
 }

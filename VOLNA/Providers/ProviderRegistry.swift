@@ -1,60 +1,47 @@
 import Foundation
 
-/// Реестр музыкальных провайдеров
+/// Реестр музыкальных провайдеров. Хранит actors и не выполняет сетевых
+/// запросов сам по себе.
 @MainActor
-final class ProviderRegistry: Sendable {
+final class ProviderRegistry {
     private var providers: [String: any MusicProvider] = [:]
-    
-    init() {}
-    
-    /// Зарегистрировать провайдера
-    func register(_ provider: any MusicProvider) async {
-        let id = await provider.id
-        providers[id] = provider
-        print("📝 Registered provider: \(await provider.name)")
+
+    init(providers: [any MusicProvider] = []) {
+        for provider in providers {
+            self.providers[provider.id] = provider
+        }
     }
-    
-    /// Удалить провайдера
+
+    func register(_ provider: any MusicProvider) {
+        providers[provider.id] = provider
+    }
+
     func unregister(providerID: String) {
         providers.removeValue(forKey: providerID)
-        print("🗑️ Unregistered provider: \(providerID)")
     }
-    
-    /// Получить провайдера по ID
+
     func provider(for id: String) -> (any MusicProvider)? {
         providers[id]
     }
-    
-    /// Все зарегистрированные провайдеры
+
     var allProviders: [any MusicProvider] {
-        Array(providers.values)
-    }
-    
-    /// Провайдеры с возможностью поиска
-    var searchableProviders: [any MusicProvider] {
-        allProviders.filter { provider in
-            Task { await provider.capabilities.supportsSearch }
-            return true
+        providers.values.sorted { lhs, rhs in
+            let leftPriority = MusicSourceCatalog.info(for: lhs.id)?.priority ?? 0
+            let rightPriority = MusicSourceCatalog.info(for: rhs.id)?.priority ?? 0
+            return leftPriority > rightPriority
         }
     }
-    
-    /// Количество провайдеров
+
+    var searchableProviders: [any MusicProvider] {
+        allProviders.filter { $0.capabilities.supportsSearch }
+    }
+
     var providerCount: Int {
         providers.count
     }
-    
-    /// Проверить доступность провайдера
-    func isAvailable(providerID: String) async -> Bool {
-        guard let provider = provider(for: providerID) else {
-            return false
-        }
-        
-        let capabilities = await provider.capabilities
-        if capabilities.requiresAuthentication {
-            // TODO: Check authentication status
-            return false
-        }
-        
-        return true
+
+    func isAvailable(providerID: String) -> Bool {
+        guard let provider = providers[providerID] else { return false }
+        return provider.capabilities.supportsSearch && !provider.capabilities.requiresAuthentication
     }
 }

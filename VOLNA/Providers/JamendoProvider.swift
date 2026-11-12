@@ -1,13 +1,16 @@
 import Foundation
 
-/// Jamendo Music Provider
-/// API Documentation: https://developer.jamendo.com/v3.0/docs
-/// 500,000+ Creative Commons licensed tracks
+/// Jamendo Music Provider.
+/// Документация: https://developer.jamendo.com/v3.0/docs
+///
+/// Используется только публичный Client ID. Client Secret в приложение не
+/// попадает. Лицензия, разрешение на поток и разрешение на скачивание берутся
+/// из ответа API для каждого трека отдельно.
 actor JamendoProvider: MusicProvider {
-    let id = "jamendo"
-    let name = "Jamendo"
-    
-    let capabilities = ProviderCapabilities(
+    nonisolated let id = "jamendo"
+    nonisolated let name = "Jamendo"
+
+    nonisolated let capabilities = ProviderCapabilities(
         supportsSearch: true,
         supportsStreaming: true,
         supportsArtwork: true,
@@ -15,207 +18,404 @@ actor JamendoProvider: MusicProvider {
         supportsArtists: true,
         supportsLyrics: false,
         supportsDownload: true,
-        requiresAuthentication: false
+        requiresAuthentication: false,
+        supportsRussian: true,
+        isLocal: false
     )
-    
+
     private let baseURL = "https://api.jamendo.com/v3.0"
-    private let clientID = "b488b912" // Real Jamendo Client ID
-    
+    private let clientID = "b488b912"
     private let urlSession: URLSession
-    
+
     init() {
-        let config = URLSessionConfiguration.default
-        config.timeoutIntervalForRequest = 30
-        config.requestCachePolicy = .reloadIgnoringLocalCacheData
-        self.urlSession = URLSession(configuration: config)
+        let configuration = URLSessionConfiguration.default
+        configuration.timeoutIntervalForRequest = 20
+        configuration.timeoutIntervalForResource = 30
+        configuration.requestCachePolicy = .reloadIgnoringLocalCacheData
+        configuration.httpAdditionalHeaders = ["Accept": "application/json"]
+        self.urlSession = URLSession(configuration: configuration)
     }
-    
-    // MARK: - MusicProvider Implementation
-    
+
+    // MARK: - MusicProvider
+
     func search(query: String, type: SearchType) async throws -> SearchResult {
-        // For now, search only tracks
-        // TODO: Add album and artist search
-        let tracks = try await searchTracks(query: query, limit: 20)
-        
+        let trimmed = query.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else {
+            return SearchResult(providerID: id)
+        }
+
+        var tracks: [Track] = []
+        var albums: [Album] = []
+        var artists: [Artist] = []
+
+        if type == .track || type == .all {
+            tracks = try await searchTracks(query: trimmed, limit: 40)
+        }
+        if type == .album || type == .all {
+            albums = (try? await searchAlbums(query: trimmed, limit: 12)) ?? []
+        }
+        if type == .artist || type == .all {
+            artists = (try? await searchArtists(query: trimmed, limit: 10)) ?? []
+        }
+
         return SearchResult(
             tracks: tracks,
-            albums: [],
-            artists: [],
+            albums: albums,
+            artists: artists,
             providerID: id
         )
     }
-    
+
     func resolveStream(for track: Track) async throws -> StreamSource? {
         guard track.providerID == id else {
             throw ProviderError.invalidConfiguration
         }
-        
-        // Jamendo provides direct audio URLs
-        // The stream URL should be included in availableStreams
-        guard let existingStream = track.availableStreams.first else {
-            return nil
-        }
-        
-        return existingStream
+        return track.playableStreams.first
     }
-    
-    func fetchArtist(id: String) async throws -> Artist? {
+
+    func fetchArtist(id artistID: String) async throws -> Artist? {
         let url = buildURL(
-            endpoint: "/artists",
+            endpoint: "/artists/",
             parameters: [
-                "id": id,
+                "id": artistID,
                 "imagesize": "600"
             ]
         )
-        
-        let response: JamendoArtistsResponse = try await performRequest(url: url)
-        guard let artistData = response.results.first else {
+        let response: JamendoResponse<JamendoArtist> = try await performRequest(url)
+        guard let artist = response.results.first else {
             throw ProviderError.resourceNotFound
         }
-        
-        return Artist(
-            id: artistData.id,
-            name: artistData.name,
-            artworkURL: URL(string: artistData.image ?? ""),
-            biography: artistData.shorturl,
-            providerID: self.id
-        )
+        return mapArtist(artist)
     }
-    
-    func fetchAlbum(id: String) async throws -> Album? {
+
+    func fetchAlbum(id albumID: String) async throws -> Album? {
         let url = buildURL(
             endpoint: "/albums/tracks",
             parameters: [
-                "id": id,
+                "id": albumID,
                 "imagesize": "600",
-                "audioformat": "mp32"
+                "audioformat": "mp32",
+                "include": "licenses musicinfo"
             ]
         )
-        
-        let response: JamendoAlbumTracksResponse = try await performRequest(url: url)
-        guard let albumData = response.results.first else {
+        let response: JamendoResponse<JamendoAlbumWithTracks> = try await performRequest(url)
+        guard let album = response.results.first else {
             throw ProviderError.resourceNotFound
         }
-        
-        let tracks = albumData.tracks.map { trackData in
-            mapTrack(from: trackData, albumName: albumData.name, artworkURL: albumData.image)
-        }
-        
+        let tracks = album.tracks.compactMap { mapTrack($0, albumName: album.name, artworkURL: album.image) }
         return Album(
-            id: albumData.id,
-            title: albumData.name,
-            artist: albumData.artistName ?? "Unknown",
-            artworkURL: URL(string: albumData.image ?? ""),
-            releaseDate: parseReleaseDate(albumData.releasedate),
-            providerID: self.id,
+            id: album.id,
+            title: album.name,
+            artist: album.artistName ?? "Неизвестный исполнитель",
+            artworkURL: urlOrNil(album.image),
+            releaseDate: parseDate(album.releaseDate),
+            providerID: id,
             tracks: tracks
         )
     }
-    
-    // MARK: - Private Methods
-    
-    private func searchTracks(query: String, limit: Int = 20) async throws -> [Track] {
+
+    func healthCheck() async -> ProviderHealth {
+        let start = ContinuousClock.now
+        do {
+            let url = buildURL(
+                endpoint: "/tracks/",
+                parameters: [
+                    "limit": "1",
+                    "audioformat": "mp32",
+                    "include": "licenses"
+                ]
+            )
+            let response: JamendoResponse<JamendoTrack> = try await performRequest(url)
+            let latency = start.duration(to: .now).timeInterval
+            return ProviderHealth(
+                isAvailable: response.headers?.status != "failed",
+                latency: latency,
+                message: response.headers?.status == "failed"
+                    ? (response.headers?.errorMessage ?? "API вернул ошибку")
+                    : "API отвечает",
+                sampleTrackCount: response.results.count
+            )
+        } catch {
+            return ProviderHealth(
+                isAvailable: false,
+                latency: nil,
+                message: error.localizedDescription,
+                sampleTrackCount: nil
+            )
+        }
+    }
+
+    // MARK: - Search endpoints
+
+    private func searchTracks(query: String, limit: Int) async throws -> [Track] {
+        var parameters = [
+            "search": query,
+            "limit": "\(limit)",
+            "offset": "0",
+            "imagesize": "600",
+            "audioformat": "mp32",
+            "include": "licenses musicinfo",
+            "order": "relevance"
+        ]
+        // Jamendo ищет по метаданным на языке записи. Для кириллического
+        // запроса фильтр lang=ru даёт русскоязычные треки, иначе API часто
+        // возвращает пустую выдачу.
+        if RussianText.hasCyrillic(query) {
+            parameters["lang"] = "ru"
+        }
+        let url = buildURL(endpoint: "/tracks/", parameters: parameters)
+        let response: JamendoResponse<JamendoTrack> = try await performRequest(url)
+        return response.results.compactMap { mapTrack($0) }
+    }
+
+    private func searchAlbums(query: String, limit: Int) async throws -> [Album] {
         let url = buildURL(
-            endpoint: "/tracks",
+            endpoint: "/albums/",
             parameters: [
                 "search": query,
                 "limit": "\(limit)",
                 "imagesize": "600",
-                "audioformat": "mp32",
-                "include": "musicinfo"
+                "order": "relevance"
             ]
         )
-        
-        let response: JamendoTracksResponse = try await performRequest(url: url)
-        
-        return response.results.map { trackData in
-            mapTrack(from: trackData)
-        }
-    }
-    
-    private func mapTrack(
-        from data: JamendoTrack,
-        albumName: String? = nil,
-        artworkURL: String? = nil
-    ) -> Track {
-        let audioURL = URL(string: data.audio ?? "")
-        let artwork = URL(string: artworkURL ?? data.image ?? data.albumImage ?? "")
-        
-        let streamSource = audioURL.map { url in
-            StreamSource(
-                providerID: self.id,
-                streamURL: url,
-                format: .mp3,
-                bitrate: 320,
-                availability: .available
+        let response: JamendoResponse<JamendoAlbum> = try await performRequest(url)
+        return response.results.map { album in
+            Album(
+                id: album.id,
+                title: album.name,
+                artist: album.artistName ?? "Неизвестный исполнитель",
+                artworkURL: urlOrNil(album.image),
+                releaseDate: parseDate(album.releaseDate),
+                providerID: id,
+                tracks: []
             )
         }
-        
+    }
+
+    private func searchArtists(query: String, limit: Int) async throws -> [Artist] {
+        let url = buildURL(
+            endpoint: "/artists/",
+            parameters: [
+                "search": query,
+                "limit": "\(limit)",
+                "imagesize": "600",
+                "order": "relevance"
+            ]
+        )
+        let response: JamendoResponse<JamendoArtist> = try await performRequest(url)
+        return response.results.map(mapArtist)
+    }
+
+    // MARK: - Mapping
+
+    private func mapTrack(
+        _ data: JamendoTrack,
+        albumName: String? = nil,
+        artworkURL: String? = nil
+    ) -> Track? {
+        guard let audioString = data.audio, !audioString.isEmpty,
+              let audioURL = URL(string: audioString) else {
+            return nil
+        }
+
+        let license = LicenseParser.parse(urlString: data.licenseCCURL)
+        let licenseURL = URL(string: data.licenseCCURL ?? "")
+            ?? LicenseParser.defaultURL(for: license)
+        let downloadURL = data.audiodownloadAllowed == true
+            ? urlOrNil(data.audiodownload)
+            : nil
+        let isDownloadAllowed = data.audiodownloadAllowed == true && downloadURL != nil
+
+        let language = LanguageDetector.detect(
+            declared: data.musicinfo?.lang,
+            texts: [data.name, data.artistName, data.albumName ?? albumName]
+        )
+        let genre = data.musicinfo?.tags?.genres?.first(where: { !$0.isEmpty })
+        let artistName = data.artistName ?? "Неизвестный исполнитель"
+        let albumTitle = albumName ?? data.albumName
+        let artwork = urlOrNil(data.image ?? data.albumImage ?? artworkURL)
+
+        let attribution = [
+            "«\(data.name)» — \(artistName)",
+            albumTitle.map { "альбом «\($0)»" },
+            "источник: Jamendo",
+            "лицензия: \(license.displayName)"
+        ].compactMap { $0 }.joined(separator: ", ")
+
+        let stream = StreamSource(
+            providerID: id,
+            streamURL: audioURL,
+            format: .mp3,
+            bitrate: nil,
+            availability: .available,
+            license: license,
+            licenseURL: licenseURL,
+            attribution: attribution
+        )
+
         return Track(
-            id: "\(self.id)_\(data.id)",
+            id: "\(id)_\(data.id)",
             title: data.name,
-            artist: data.artistName ?? "Unknown",
-            album: albumName ?? data.albumName,
+            artist: artistName,
+            album: albumTitle,
             artworkURL: artwork,
-            duration: TimeInterval(data.duration ?? 0),
-            providerID: self.id,
+            duration: data.duration.map(TimeInterval.init),
+            providerID: id,
             sourceID: data.id,
             isrc: nil,
             explicit: false,
-            availableStreams: streamSource.map { [$0] } ?? []
+            availableStreams: [stream],
+            language: language,
+            originalTitle: data.name,
+            transliteratedTitle: LanguageDetector.isCyrillic(data.name) ? RussianText.transliterate(data.name) : nil,
+            license: license,
+            licenseURL: licenseURL,
+            attribution: attribution,
+            isStreamAllowed: true,
+            isDownloadAllowed: isDownloadAllowed,
+            downloadURL: downloadURL,
+            sourcePageURL: urlOrNil(data.shareurl) ?? URL(string: "https://www.jamendo.com/track/\(data.id)"),
+            region: nil,
+            genre: genre
         )
     }
-    
+
+    private func mapArtist(_ data: JamendoArtist) -> Artist {
+        Artist(
+            id: data.id,
+            name: data.name,
+            artworkURL: urlOrNil(data.image),
+            biography: data.website,
+            providerID: id
+        )
+    }
+
+    // MARK: - Networking
+
     private func buildURL(endpoint: String, parameters: [String: String]) -> URL {
         var components = URLComponents(string: baseURL + endpoint)!
-        
-        var queryItems = [URLQueryItem(name: "client_id", value: clientID)]
-        queryItems += parameters.map { URLQueryItem(name: $0.key, value: $0.value) }
-        components.queryItems = queryItems
-        
+        var items = [URLQueryItem(name: "client_id", value: clientID)]
+        items.append(URLQueryItem(name: "format", value: "json"))
+        for key in parameters.keys.sorted() {
+            items.append(URLQueryItem(name: key, value: parameters[key]))
+        }
+        components.queryItems = items
         return components.url!
     }
-    
-    private func performRequest<T: Decodable>(url: URL) async throws -> T {
+
+    private func performRequest<T: Decodable>(_ url: URL) async throws -> T {
         var request = URLRequest(url: url)
-        request.setValue("VOLNA/0.1.0", forHTTPHeaderField: "User-Agent")
-        
-        let (data, response) = try await urlSession.data(for: request)
-        
-        guard let httpResponse = response as? HTTPURLResponse else {
-            throw ProviderError.invalidResponse
+        request.timeoutInterval = 20
+        request.setValue("VOLNA/1.0 (iOS; open music player)", forHTTPHeaderField: "User-Agent")
+        request.setValue("application/json", forHTTPHeaderField: "Accept")
+
+        let data: Data
+        let response: URLResponse
+        do {
+            (data, response) = try await urlSession.data(for: request)
+        } catch {
+            if Task.isCancelled { throw CancellationError() }
+            throw ProviderError.networkError(error)
         }
-        
-        switch httpResponse.statusCode {
+
+        guard let http = response as? HTTPURLResponse else {
+            throw ProviderError.invalidResponse()
+        }
+        switch http.statusCode {
         case 200:
             let decoder = JSONDecoder()
             do {
-                return try decoder.decode(T.self, from: data)
+                let decoded = try decoder.decode(T.self, from: data)
+                if let jamendoResponse = decoded as? JamendoErrorReporting,
+                   jamendoResponse.jamendoStatus == "failed" {
+                    throw ProviderError.invalidResponse(jamendoResponse.jamendoErrorMessage)
+                }
+                return decoded
+            } catch let error as ProviderError {
+                throw error
             } catch {
-                print("❌ Jamendo decode error: \(error)")
-                throw ProviderError.invalidResponse
+                throw ProviderError.invalidResponse("не удалось разобрать JSON Jamendo")
             }
+        case 401, 403:
+            throw ProviderError.authenticationRequired
         case 429:
             throw ProviderError.rateLimitExceeded
         case 404:
             throw ProviderError.resourceNotFound
         default:
-            throw ProviderError.invalidResponse
+            throw ProviderError.invalidResponse("HTTP \(http.statusCode)")
         }
     }
-    
-    private func parseReleaseDate(_ dateString: String?) -> Date? {
-        guard let dateString = dateString else { return nil }
+
+    private func urlOrNil(_ string: String?) -> URL? {
+        guard let string, !string.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
+            return nil
+        }
+        return URL(string: string)
+    }
+
+    private func parseDate(_ string: String?) -> Date? {
+        guard let string, !string.isEmpty else { return nil }
         let formatter = DateFormatter()
+        formatter.locale = Locale(identifier: "en_US_POSIX")
         formatter.dateFormat = "yyyy-MM-dd"
-        return formatter.date(from: dateString)
+        return formatter.date(from: string)
     }
 }
 
-// MARK: - Jamendo API Response Models
+// MARK: - API models
 
-private struct JamendoTracksResponse: Decodable {
-    let results: [JamendoTrack]
+private protocol JamendoErrorReporting {
+    var jamendoStatus: String? { get }
+    var jamendoErrorMessage: String? { get }
+}
+
+private struct JamendoResponse<Result: Decodable>: Decodable, JamendoErrorReporting {
+    let headers: JamendoHeaders?
+    let results: [Result]
+
+    var jamendoStatus: String? { headers?.status }
+    var jamendoErrorMessage: String? { headers?.errorMessage }
+}
+
+private struct JamendoHeaders: Decodable {
+    let status: String?
+    let code: Int?
+    let errorMessage: String?
+    let warnings: String?
+    let resultsCount: Int?
+
+    enum CodingKeys: String, CodingKey {
+        case status
+        case code
+        case errorMessage = "error_message"
+        case warnings
+        case resultsCount = "results_count"
+    }
+}
+
+private struct JamendoMusicInfo: Decodable {
+    let vocalInstrumental: String?
+    let lang: String?
+    let gender: String?
+    let acousticelectric: String?
+    let speed: String?
+    let tags: JamendoTags?
+
+    enum CodingKeys: String, CodingKey {
+        case vocalInstrumental = "vocalinstrumental"
+        case lang
+        case gender
+        case acousticelectric
+        case speed
+        case tags
+    }
+}
+
+private struct JamendoTags: Decodable {
+    let genres: [String]?
+    let instruments: [String]?
+    let vartags: [String]?
 }
 
 private struct JamendoTrack: Decodable {
@@ -227,7 +427,12 @@ private struct JamendoTrack: Decodable {
     let albumImage: String?
     let image: String?
     let audio: String?
-    
+    let audiodownload: String?
+    let audiodownloadAllowed: Bool?
+    let licenseCCURL: String?
+    let shareurl: String?
+    let musicinfo: JamendoMusicInfo?
+
     enum CodingKeys: String, CodingKey {
         case id
         case name
@@ -237,22 +442,36 @@ private struct JamendoTrack: Decodable {
         case albumImage = "album_image"
         case image
         case audio
+        case audiodownload
+        case audiodownloadAllowed = "audiodownload_allowed"
+        case licenseCCURL = "license_ccurl"
+        case shareurl
+        case musicinfo
     }
-}
-
-private struct JamendoArtistsResponse: Decodable {
-    let results: [JamendoArtist]
 }
 
 private struct JamendoArtist: Decodable {
     let id: String
     let name: String
     let image: String?
+    let website: String?
     let shorturl: String?
 }
 
-private struct JamendoAlbumTracksResponse: Decodable {
-    let results: [JamendoAlbumWithTracks]
+private struct JamendoAlbum: Decodable {
+    let id: String
+    let name: String
+    let artistName: String?
+    let image: String?
+    let releaseDate: String?
+
+    enum CodingKeys: String, CodingKey {
+        case id
+        case name
+        case artistName = "artist_name"
+        case image
+        case releaseDate = "releasedate"
+    }
 }
 
 private struct JamendoAlbumWithTracks: Decodable {
@@ -260,15 +479,15 @@ private struct JamendoAlbumWithTracks: Decodable {
     let name: String
     let artistName: String?
     let image: String?
-    let releasedate: String?
+    let releaseDate: String?
     let tracks: [JamendoTrack]
-    
+
     enum CodingKeys: String, CodingKey {
         case id
         case name
         case artistName = "artist_name"
         case image
-        case releasedate
+        case releaseDate = "releasedate"
         case tracks
     }
 }

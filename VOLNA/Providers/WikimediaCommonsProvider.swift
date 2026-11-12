@@ -1,13 +1,17 @@
 import Foundation
 
-/// Wikimedia Commons Audio Provider
-/// API Documentation: https://www.mediawiki.org/wiki/API:Main_page
-/// Free-licensed audio files from Wikimedia Commons
+/// Wikimedia Commons Audio Provider.
+/// Документация: https://www.mediawiki.org/wiki/API:Main_page
+///
+/// Для OGG/Opus используется официальная MP3-транскодия Wikimedia
+/// (`prop=videoinfo`, `viprop=derivatives`), поскольку AVPlayer не умеет
+/// воспроизводить OGG/Opus без стороннего декодера. Лицензия и атрибуция
+/// берутся из `extmetadata` для каждого файла.
 actor WikimediaCommonsProvider: MusicProvider {
-    let id = "wikimedia_commons"
-    let name = "Wikimedia Commons"
-    
-    let capabilities = ProviderCapabilities(
+    nonisolated let id = "wikimedia_commons"
+    nonisolated let name = "Wikimedia Commons"
+
+    nonisolated let capabilities = ProviderCapabilities(
         supportsSearch: true,
         supportsStreaming: true,
         supportsArtwork: false,
@@ -15,376 +19,433 @@ actor WikimediaCommonsProvider: MusicProvider {
         supportsArtists: false,
         supportsLyrics: false,
         supportsDownload: true,
-        requiresAuthentication: false
+        requiresAuthentication: false,
+        supportsRussian: true,
+        isLocal: false
     )
-    
+
     private let baseURL = "https://commons.wikimedia.org/w/api.php"
     private let urlSession: URLSession
-    
+
+    private let spokenWordMarkers = [
+        "pronunciation", "pronounciation", "spoken", "speech", "voice recording",
+        "reading", "recitation", "wiki-", "wiktionary", "dialogue", "interview",
+        "произношение", "озвучка", "чтение", "лекция", "интервью", "аудиокнига"
+    ]
+
     init() {
-        let config = URLSessionConfiguration.default
-        config.timeoutIntervalForRequest = 30
-        config.requestCachePolicy = .returnCacheDataElseLoad
-        self.urlSession = URLSession(configuration: config)
+        let configuration = URLSessionConfiguration.default
+        configuration.timeoutIntervalForRequest = 25
+        configuration.timeoutIntervalForResource = 40
+        configuration.requestCachePolicy = .returnCacheDataElseLoad
+        configuration.httpAdditionalHeaders = ["Accept": "application/json"]
+        self.urlSession = URLSession(configuration: configuration)
     }
-    
-    // MARK: - MusicProvider Implementation
-    
+
+    // MARK: - MusicProvider
+
     func search(query: String, type: SearchType) async throws -> SearchResult {
-        let tracks = try await searchAudioFiles(query: query, limit: 20)
-        
-        return SearchResult(
-            tracks: tracks,
-            albums: [],
-            artists: [],
-            providerID: id
-        )
+        let trimmed = query.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return SearchResult(providerID: id) }
+        guard type == .track || type == .all else {
+            return SearchResult(providerID: id)
+        }
+
+        let tracks = try await searchFiles(query: trimmed)
+        return SearchResult(tracks: tracks, providerID: id)
     }
-    
+
     func resolveStream(for track: Track) async throws -> StreamSource? {
         guard track.providerID == id else {
             throw ProviderError.invalidConfiguration
         }
-        
-        return track.availableStreams.first
+        return track.playableStreams.first
     }
-    
-    func fetchArtist(id: String) async throws -> Artist? {
-        throw ProviderError.notSupported
-    }
-    
-    func fetchAlbum(id: String) async throws -> Album? {
-        throw ProviderError.notSupported
-    }
-    
-    // MARK: - Private Methods
-    
-    private func searchAudioFiles(query: String, limit: Int = 20) async throws -> [Track] {
-        // Search for audio files
-        let searchQuery = "filetype:audio \(query)"
-        let url = buildSearchURL(query: searchQuery, limit: limit)
-        
-        let searchResponse: WikiSearchResponse = try await performRequest(url: url)
-        
-        guard let pages = searchResponse.query?.search else {
-            return []
+
+    func healthCheck() async -> ProviderHealth {
+        let start = ContinuousClock.now
+        do {
+            let url = try buildSearchURL(query: "music", limit: 1)
+            let response: WikimediaResponse = try await performRequest(url)
+            let pages = response.query?.pages.map { Array($0.values) } ?? []
+            let latency = start.duration(to: .now).timeInterval
+            return ProviderHealth(
+                isAvailable: !pages.isEmpty,
+                latency: latency,
+                message: "MediaWiki API отвечает",
+                sampleTrackCount: pages.count
+            )
+        } catch {
+            return ProviderHealth(
+                isAvailable: false,
+                latency: nil,
+                message: error.localizedDescription,
+                sampleTrackCount: nil
+            )
         }
-        
+    }
+
+    // MARK: - Search
+
+    private func searchFiles(query: String) async throws -> [Track] {
+        let url = try buildSearchURL(query: query, limit: 25)
+        let response: WikimediaResponse = try await performRequest(url)
+
+        let pages = response.query?.pages?.values.sorted {
+            ($0.index ?? Int.max) < ($1.index ?? Int.max)
+        } ?? []
+
+        var seen = Set<String>()
         var tracks: [Track] = []
-        
-        // Fetch file info for each result
-        for page in pages.prefix(limit) {
-            let filename = page.title
-            
-            do {
-                if let track = try await fetchFileInfo(filename: filename) {
-                    tracks.append(track)
-                }
-            } catch {
-                print("⚠️ Failed to fetch file info for \(filename): \(error)")
+
+        for page in pages {
+            guard let track = mapPage(page), seen.insert(track.id).inserted else {
                 continue
             }
+            tracks.append(track)
         }
-        
-        return tracks
+
+        return Array(tracks.prefix(30))
     }
-    
-    private func fetchFileInfo(filename: String) async throws -> Track? {
-        let url = buildFileInfoURL(filename: filename)
-        
-        let response: WikiFileInfoResponse = try await performRequest(url: url)
-        
-        guard let pages = response.query?.pages,
-              let page = pages.values.first,
-              let imageInfo = page.imageinfo?.first else {
+
+    private func mapPage(_ page: WikimediaPage) -> Track? {
+        guard let pageID = page.pageid,
+              let info = page.videoinfo?.first ?? page.imageinfo?.first else {
             return nil
         }
-        
-        // Only process audio files
-        guard let mime = imageInfo.mime,
-              mime.starts(with: "audio/") else {
+
+        let rawTitle = page.title ?? ""
+        guard !rawTitle.isEmpty else { return nil }
+
+        let lowerTitle = rawTitle.lowercased()
+        guard !spokenWordMarkers.contains(where: { lowerTitle.contains($0) }) else {
             return nil
         }
-        
-        // Parse metadata
-        let extMetadata = imageInfo.extmetadata
-        
-        // Extract title (remove "File:" prefix)
-        let title = extractTitle(from: filename, metadata: extMetadata)
-        let artist = extMetadata?.artist?.value ?? "Unknown"
-        
-        // Parse license
-        let license = parseLicense(from: extMetadata)
-        
-        // Detect language (check categories or description)
-        let language = detectLanguage(from: extMetadata, filename: filename)
-        
-        let streamSource = StreamSource(
-            providerID: self.id,
-            streamURL: imageInfo.url,
-            format: parseFormat(from: mime),
-            bitrate: nil,
-            availability: .available
+
+        let meta = info.extmetadata ?? [:]
+        let cleanTitle = displayTitle(from: rawTitle, meta: meta)
+        guard !cleanTitle.isEmpty else { return nil }
+
+        let licenseURLString = firstNonEmpty([
+            meta["LicenseUrl"]?.stringValue,
+            meta["License"]?.stringValue
+        ])
+        var license = LicenseParser.parse(urlString: licenseURLString)
+        if license == .unknown {
+            license = LicenseParser.parse(text: firstNonEmpty([
+                meta["LicenseShortName"]?.stringValue,
+                meta["UsageTerms"]?.stringValue
+            ]))
+        }
+
+        let licenseURL = URL(string: licenseURLString ?? "")
+            ?? LicenseParser.defaultURL(for: license)
+
+        let artist = firstNonEmpty([
+            stripHTML(meta["Artist"]?.stringValue),
+            stripHTML(meta["Credit"]?.stringValue),
+            "Wikimedia Commons"
+        ])
+
+        let description = stripHTML(meta["ImageDescription"]?.stringValue)
+        let genre = firstNonEmpty([
+            meta["Genre"]?.stringValue,
+            meta["ObjectName"]?.stringValue
+        ])
+
+        let pageURL = URL(string: info.descriptionurl ?? "")
+            ?? URL(string: "https://commons.wikimedia.org/wiki/\(rawTitle.addingPercentEncoding(withAllowedCharacters: .urlPathAllowed) ?? rawTitle)")
+
+        let duration = info.duration.flatMap { $0.isFinite && $0 > 0 ? $0 : nil }
+        let language = LanguageDetector.detect(
+            declared: nil,
+            texts: [cleanTitle, artist, description]
         )
-        
+
+        guard let stream = selectStream(info: info, license: license, licenseURL: licenseURL) else {
+            return nil
+        }
+
+        let attribution = [
+            "«\(cleanTitle)» — \(artist)",
+            "источник: Wikimedia Commons",
+            "лицензия: \(license.displayName)"
+        ].joined(separator: ", ")
+
         return Track(
-            id: "\(self.id)_\(page.pageid)",
-            title: title,
+            id: "\(id)_\(pageID)",
+            title: cleanTitle,
             artist: artist,
             album: nil,
-            artworkURL: imageInfo.thumburl,
-            duration: TimeInterval(imageInfo.duration ?? 0),
-            providerID: self.id,
-            sourceID: "\(page.pageid)",
+            artworkURL: nil,
+            duration: duration,
+            providerID: id,
+            sourceID: String(pageID),
             isrc: nil,
             explicit: false,
-            availableStreams: [streamSource],
+            availableStreams: [stream],
             language: language,
-            originalTitle: title,
-            transliteratedTitle: nil,
+            originalTitle: cleanTitle,
+            transliteratedTitle: LanguageDetector.isCyrillic(cleanTitle)
+                ? RussianText.transliterate(cleanTitle)
+                : nil,
             license: license,
-            licenseURL: parseLicenseURL(from: extMetadata),
-            attribution: extMetadata?.attribution?.value,
+            licenseURL: licenseURL,
+            attribution: attribution,
             isStreamAllowed: true,
-            isDownloadAllowed: checkDownloadAllowed(license: license),
+            isDownloadAllowed: true,
+            downloadURL: stream.streamURL,
+            sourcePageURL: pageURL,
             region: nil,
-            genre: extractGenre(from: extMetadata)
+            genre: genre
         )
     }
-    
-    private func buildSearchURL(query: String, limit: Int) -> URL {
-        var components = URLComponents(string: baseURL)!
-        
-        components.queryItems = [
-            URLQueryItem(name: "action", value: "query"),
-            URLQueryItem(name: "list", value: "search"),
-            URLQueryItem(name: "srsearch", value: query),
-            URLQueryItem(name: "srnamespace", value: "6"), // File namespace
-            URLQueryItem(name: "srlimit", value: "\(limit)"),
-            URLQueryItem(name: "format", value: "json")
-        ]
-        
-        return components.url!
-    }
-    
-    private func buildFileInfoURL(filename: String) -> URL {
-        var components = URLComponents(string: baseURL)!
-        
-        components.queryItems = [
-            URLQueryItem(name: "action", value: "query"),
-            URLQueryItem(name: "prop", value: "imageinfo"),
-            URLQueryItem(name: "iiprop", value: "url|size|mime|extmetadata|duration"),
-            URLQueryItem(name: "titles", value: filename),
-            URLQueryItem(name: "format", value: "json")
-        ]
-        
-        return components.url!
-    }
-    
-    private func extractTitle(from filename: String, metadata: WikiExtMetadata?) -> String {
-        // Try to get title from metadata
-        if let objectName = metadata?.objectName?.value {
-            return objectName
+
+    // MARK: - Stream selection
+
+    private func selectStream(
+        info: WikimediaVideoInfo,
+        license: LicenseType,
+        licenseURL: URL?
+    ) -> StreamSource? {
+        let derivatives = info.derivatives ?? []
+        if let mp3 = derivatives.first(where: { derivative in
+            let type = derivative.type?.lowercased() ?? ""
+            return type.contains("audio/mpeg") && derivative.src?.isEmpty == false
+        }), let string = mp3.src, let url = URL(string: string) {
+            return StreamSource(
+                providerID: id,
+                streamURL: url,
+                format: .mp3,
+                bitrate: nil,
+                availability: .available,
+                license: license,
+                licenseURL: licenseURL,
+                attribution: "Wikimedia Commons, MP3-транскодия"
+            )
         }
-        
-        // Remove "File:" prefix and extension
-        var title = filename.replacingOccurrences(of: "File:", with: "")
-        if let lastDot = title.lastIndex(of: ".") {
-            title = String(title[..<lastDot])
+
+        if let mime = info.mime?.lowercased(),
+           mime == "audio/mpeg",
+           let string = info.url,
+           let url = URL(string: string) {
+            return StreamSource(
+                providerID: id,
+                streamURL: url,
+                format: .mp3,
+                bitrate: nil,
+                availability: .available,
+                license: license,
+                licenseURL: licenseURL,
+                attribution: "Wikimedia Commons, исходный MP3"
+            )
         }
-        
-        // Replace underscores with spaces
-        title = title.replacingOccurrences(of: "_", with: " ")
-        
-        return title
-    }
-    
-    private func parseLicense(from metadata: WikiExtMetadata?) -> LicenseType {
-        guard let licenseShortName = metadata?.licenseShortName?.value?.lowercased() else {
-            return .unknown
+
+        // Официальной MP3-транскодии нет: файл помечается недоступным для
+        // AVPlayer, но остаётся видимым в метаданных с честным форматом.
+        if let string = info.url, let url = URL(string: string) {
+            let format = AudioFormat.from(mimeType: info.mime, pathExtension: url.pathExtension)
+            guard format != .unknown else { return nil }
+            return StreamSource(
+                providerID: id,
+                streamURL: url,
+                format: format,
+                bitrate: nil,
+                availability: format.isPlayableByAVPlayer ? .available : .unavailable,
+                license: license,
+                licenseURL: licenseURL,
+                attribution: "Wikimedia Commons, исходный файл без MP3-транскодии"
+            )
         }
-        
-        if licenseShortName.contains("cc0") || licenseShortName.contains("cc 0") {
-            return .cc0
-        } else if licenseShortName.contains("cc-by-sa") || licenseShortName.contains("cc by-sa") {
-            return .ccBySa
-        } else if licenseShortName.contains("cc-by-nc-sa") {
-            return .ccByNcSa
-        } else if licenseShortName.contains("cc-by-nc-nd") {
-            return .ccByNcNd
-        } else if licenseShortName.contains("cc-by-nc") {
-            return .ccByNc
-        } else if licenseShortName.contains("cc-by-nd") {
-            return .ccByNd
-        } else if licenseShortName.contains("cc-by") || licenseShortName.contains("cc by") {
-            return .ccBy
-        } else if licenseShortName.contains("public domain") || licenseShortName.contains("pd") {
-            return .publicDomain
-        } else {
-            return .other
-        }
-    }
-    
-    private func parseLicenseURL(from metadata: WikiExtMetadata?) -> URL? {
-        guard let urlString = metadata?.licenseUrl?.value else {
-            return nil
-        }
-        return URL(string: urlString)
-    }
-    
-    private func detectLanguage(from metadata: WikiExtMetadata?, filename: String) -> String? {
-        // Check if Russian is mentioned in categories or description
-        let filenameLC = filename.lowercased()
-        
-        if filenameLC.contains("russian") || 
-           filenameLC.contains("русск") ||
-           filenameLC.range(of: "\\p{Cyrillic}", options: .regularExpression) != nil {
-            return "ru"
-        }
-        
-        // Check categories in metadata
-        if let categories = metadata?.categories?.value {
-            if categories.lowercased().contains("russian") {
-                return "ru"
-            }
-        }
-        
+
         return nil
     }
-    
-    private func extractGenre(from metadata: WikiExtMetadata?) -> String? {
-        // Try to extract genre from categories
-        if let categories = metadata?.categories?.value {
-            let catLC = categories.lowercased()
-            
-            if catLC.contains("folk") {
-                return "Folk"
-            } else if catLC.contains("classical") {
-                return "Classical"
-            } else if catLC.contains("rock") {
-                return "Rock"
-            } else if catLC.contains("jazz") {
-                return "Jazz"
-            }
+
+    // MARK: - Networking
+
+    private func buildSearchURL(query: String, limit: Int) throws -> URL {
+        var components = URLComponents(string: baseURL)
+        components?.queryItems = [
+            URLQueryItem(name: "action", value: "query"),
+            URLQueryItem(name: "generator", value: "search"),
+            URLQueryItem(name: "gsrsearch", value: "filetype:audio \(query)"),
+            URLQueryItem(name: "gsrnamespace", value: "6"),
+            URLQueryItem(name: "gsrlimit", value: "\(limit)"),
+            URLQueryItem(name: "prop", value: "videoinfo"),
+            URLQueryItem(name: "viprop", value: "url|size|mime|extmetadata|derivatives|dimensions"),
+            URLQueryItem(name: "format", value: "json"),
+            URLQueryItem(name: "formatversion", value: "1")
+        ]
+        guard let url = components?.url else {
+            throw ProviderError.invalidConfiguration
         }
-        
-        return nil
+        return url
     }
-    
-    private func parseFormat(from mime: String) -> AudioFormat {
-        if mime.contains("mpeg") || mime.contains("mp3") {
-            return .mp3
-        } else if mime.contains("ogg") {
-            return .ogg
-        } else if mime.contains("flac") {
-            return .flac
-        } else if mime.contains("wav") {
-            return .wav
-        } else if mime.contains("m4a") || mime.contains("aac") {
-            return .m4a
-        } else {
-            return .unknown
-        }
-    }
-    
-    private func checkDownloadAllowed(license: LicenseType) -> Bool {
-        // Wikimedia Commons content is generally downloadable
-        switch license {
-        case .restricted:
-            return false
-        default:
-            return true
-        }
-    }
-    
-    private func performRequest<T: Decodable>(url: URL) async throws -> T {
+
+    private func performRequest<T: Decodable>(_ url: URL) async throws -> T {
         var request = URLRequest(url: url)
-        request.setValue("VOLNA/0.2.0 (https://github.com/volna/ios)", forHTTPHeaderField: "User-Agent")
-        
-        let (data, response) = try await urlSession.data(for: request)
-        
-        guard let httpResponse = response as? HTTPURLResponse else {
-            throw ProviderError.invalidResponse
+        request.timeoutInterval = 25
+        request.setValue(
+            "VOLNA/1.0 (iOS; open music player; https://github.com/izesf77-ship-it/VOLNA)",
+            forHTTPHeaderField: "User-Agent"
+        )
+        request.setValue("application/json", forHTTPHeaderField: "Accept")
+
+        let data: Data
+        let response: URLResponse
+        do {
+            (data, response) = try await urlSession.data(for: request)
+        } catch {
+            if Task.isCancelled { throw CancellationError() }
+            throw ProviderError.networkError(error)
         }
-        
-        switch httpResponse.statusCode {
+
+        guard let http = response as? HTTPURLResponse else {
+            throw ProviderError.invalidResponse()
+        }
+        switch http.statusCode {
         case 200:
-            let decoder = JSONDecoder()
             do {
-                return try decoder.decode(T.self, from: data)
+                return try JSONDecoder().decode(T.self, from: data)
             } catch {
-                print("❌ Wikimedia Commons decode error: \(error)")
-                print("Response: \(String(data: data, encoding: .utf8) ?? "Unable to decode")")
-                throw ProviderError.invalidResponse
+                throw ProviderError.invalidResponse("не удалось разобрать ответ Wikimedia")
             }
         case 429:
             throw ProviderError.rateLimitExceeded
         case 404:
             throw ProviderError.resourceNotFound
         default:
-            print("❌ Wikimedia Commons HTTP error: \(httpResponse.statusCode)")
-            throw ProviderError.invalidResponse
+            throw ProviderError.invalidResponse("HTTP \(http.statusCode)")
         }
     }
-}
 
-// MARK: - Wikimedia API Response Models
+    // MARK: - Text helpers
 
-private struct WikiSearchResponse: Decodable {
-    let query: WikiQuery?
-}
+    private func displayTitle(
+        from rawTitle: String,
+        meta: [String: WikimediaMetaValue]
+    ) -> String {
+        if let objectName = firstNonEmpty([
+            meta["ObjectName"]?.stringValue,
+            meta["Title"]?.stringValue
+        ]) {
+            return objectName
+        }
 
-private struct WikiQuery: Decodable {
-    let search: [WikiSearchResult]?
-    let pages: [String: WikiPage]?
-}
+        var title = rawTitle
+        if title.lowercased().hasPrefix("file:") {
+            title = String(title.dropFirst(5))
+        }
+        title = (title as NSString).deletingPathExtension
+        title = title.replacingOccurrences(of: "_", with: " ")
+        return title.trimmingCharacters(in: .whitespacesAndNewlines)
+    }
 
-private struct WikiSearchResult: Decodable {
-    let title: String
-    let pageid: Int
-}
+    private func stripHTML(_ value: String?) -> String? {
+        guard let value, !value.isEmpty else { return nil }
+        var text = value
+            .replacingOccurrences(of: "<br />", with: " ")
+            .replacingOccurrences(of: "<br/>", with: " ")
+            .replacingOccurrences(of: "<br>", with: " ")
+        text = text.replacingOccurrences(
+            of: "<[^>]+>",
+            with: " ",
+            options: .regularExpression
+        )
+        text = text
+            .replacingOccurrences(of: "&amp;", with: "&")
+            .replacingOccurrences(of: "&quot;", with: "\"")
+            .replacingOccurrences(of: "&#39;", with: "'")
+            .replacingOccurrences(of: "&nbsp;", with: " ")
+            .replacingOccurrences(of: "&lt;", with: "<")
+            .replacingOccurrences(of: "&gt;", with: ">")
+        text = text
+            .split(whereSeparator: { $0.isWhitespace })
+            .joined(separator: " ")
+        return text.isEmpty ? nil : text
+    }
 
-private struct WikiFileInfoResponse: Decodable {
-    let query: WikiFileQuery?
-}
-
-private struct WikiFileQuery: Decodable {
-    let pages: [String: WikiPage]?
-}
-
-private struct WikiPage: Decodable {
-    let pageid: Int
-    let title: String
-    let imageinfo: [WikiImageInfo]?
-}
-
-private struct WikiImageInfo: Decodable {
-    let url: URL
-    let thumburl: URL?
-    let mime: String?
-    let size: Int?
-    let duration: Double?
-    let extmetadata: WikiExtMetadata?
-}
-
-private struct WikiExtMetadata: Decodable {
-    let objectName: WikiMetadataValue?
-    let artist: WikiMetadataValue?
-    let licenseShortName: WikiMetadataValue?
-    let licenseUrl: WikiMetadataValue?
-    let attribution: WikiMetadataValue?
-    let categories: WikiMetadataValue?
-    
-    enum CodingKeys: String, CodingKey {
-        case objectName = "ObjectName"
-        case artist = "Artist"
-        case licenseShortName = "LicenseShortName"
-        case licenseUrl = "LicenseUrl"
-        case attribution = "Attribution"
-        case categories = "Categories"
+    private func firstNonEmpty(_ values: [String?]) -> String? {
+        for value in values {
+            if let value {
+                let trimmed = value.trimmingCharacters(in: .whitespacesAndNewlines)
+                if !trimmed.isEmpty { return trimmed }
+            }
+        }
+        return nil
     }
 }
 
-private struct WikiMetadataValue: Decodable {
-    let value: String
+// MARK: - API models
+
+private struct WikimediaResponse: Decodable {
+    let query: WikimediaQuery?
+}
+
+private struct WikimediaQuery: Decodable {
+    let pages: [String: WikimediaPage]?
+}
+
+private struct WikimediaPage: Decodable {
+    let pageid: Int?
+    let title: String?
+    let index: Int?
+    let videoinfo: [WikimediaVideoInfo]?
+    let imageinfo: [WikimediaVideoInfo]?
+}
+
+private struct WikimediaVideoInfo: Decodable {
+    let url: String?
+    let descriptionurl: String?
+    let mime: String?
+    let duration: Double?
+    let extmetadata: [String: WikimediaMetaValue]?
+    let derivatives: [WikimediaDerivative]?
+}
+
+private struct WikimediaDerivative: Decodable {
+    let src: String?
+    let type: String?
+}
+
+private struct WikimediaMetaValue: Decodable {
+    let value: WikimediaFlexibleString?
+
+    var stringValue: String? {
+        value?.value
+    }
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.singleValueContainer()
+        if let dictionary = try? container.decode([String: WikimediaFlexibleString].self) {
+            value = dictionary["value"]
+            return
+        }
+        value = try? container.decode(WikimediaFlexibleString.self)
+    }
+}
+
+private struct WikimediaFlexibleString: Decodable {
+    let value: String?
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.singleValueContainer()
+        if container.decodeNil() {
+            value = nil
+            return
+        }
+        if let string = try? container.decode(String.self) {
+            value = string
+            return
+        }
+        if let int = try? container.decode(Int.self) {
+            value = String(int)
+            return
+        }
+        if let double = try? container.decode(Double.self) {
+            value = String(double)
+            return
+        }
+        value = nil
+    }
 }
