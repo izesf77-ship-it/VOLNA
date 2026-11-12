@@ -5,7 +5,7 @@ struct SearchView: View {
 
     @State private var query = ""
     @State private var filters = SearchFilters.default
-    @State private var isFocused = false
+    @FocusState private var isFocused: Bool
     @State private var showIssues = false
 
     private var service: SearchService { appState.searchService }

@@ -145,7 +145,7 @@ actor WikimediaCommonsProvider: MusicProvider {
             stripHTML(meta["Artist"]?.stringValue),
             stripHTML(meta["Credit"]?.stringValue),
             "Wikimedia Commons"
-        ])
+        ]) ?? "Wikimedia Commons"
 
         let description = stripHTML(meta["ImageDescription"]?.stringValue)
         let genre = firstNonEmpty([
