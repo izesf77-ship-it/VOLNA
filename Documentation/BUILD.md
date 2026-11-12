@@ -1,371 +1,185 @@
-# VOLNA - Build Instructions
+# VOLNA — сборка и CI
 
-## Prerequisites
+## Требования
 
-### Development Environment
-- **macOS:** 14.0 (Sonoma) or later
-- **Xcode:** 16.0 or later
-- **Command Line Tools:** Installed via `xcode-select --install`
-- **Homebrew:** For installing dependencies
+- macOS 14+
+- Xcode 15+ (в GitHub Actions используется `macos-latest` с доступной версией Xcode)
+- [XcodeGen](https://github.com/yonaskolb/XcodeGen)
+- Apple Developer account — только для установки на физический iPhone или подписи IPA
 
-### Required Tools
-```bash
-# Install XcodeGen
-brew install xcodegen
-
-# Verify installation
-xcodegen --version
-```
+Локальная сборка на Windows/Linux невозможна: проект использует SwiftUI, AVFoundation и MediaPlayer.
 
 ---
 
-## Initial Setup
+## Локальная сборка
 
-### 1. Clone Repository
 ```bash
-git clone https://github.com/yourusername/VOLNA.git
+brew install xcodegen
+git clone https://github.com/izesf77-ship-it/VOLNA.git
 cd VOLNA
-```
-
-### 2. Configure API Keys
-
-**Jamendo API:**
-1. Register at [developer.jamendo.com](https://developer.jamendo.com)
-2. Create a new application
-3. Copy your Client ID
-4. Open `VOLNA/Providers/JamendoProvider.swift`
-5. Replace `YOUR_CLIENT_ID` with your actual client ID:
-
-```swift
-private let clientID = "your_actual_client_id_here"
-```
-
-> **Security Note:** For production, move API keys to a configuration file or use environment variables.
-
-### 3. Generate Xcode Project
-```bash
 xcodegen generate
-```
-
-This will create `VOLNA.xcodeproj` from `project.yml`.
-
-### 4. Open Project
-```bash
 open VOLNA.xcodeproj
 ```
 
----
+`VOLNA.xcodeproj` генерируется из `project.yml` и не хранится в репозитории.
 
-## Project Configuration
-
-### Signing & Capabilities
-
-1. Select the **VOLNA** target in Xcode
-2. Go to **Signing & Capabilities** tab
-3. **Automatically manage signing:** Enable
-4. **Team:** Select your Apple Developer team
-5. **Bundle Identifier:** Use `com.volna.app` or customize
-
-### Background Audio
-
-The project is already configured for background audio playback:
-- ✅ Audio background mode enabled in Info.plist
-- ✅ AVAudioSession configured for playback
-- ✅ MPNowPlayingInfoCenter integration
-- ✅ MPRemoteCommandCenter for lock screen controls
-
----
-
-## Building the App
-
-### For Simulator
+### Симулятор
 
 ```bash
 xcodebuild \
   -project VOLNA.xcodeproj \
   -scheme VOLNA \
+  -configuration Debug \
   -sdk iphonesimulator \
-  -destination 'platform=iOS Simulator,name=iPhone 15 Pro' \
-  clean build
+  -destination 'platform=iOS Simulator,name=iPhone 16' \
+  build
 ```
 
-### For Device
-
-1. **Connect your iPhone** via USB
-2. **Trust the computer** on your device
-3. In Xcode:
-   - Select your device from the destination menu
-   - Press **⌘R** or click Run
-4. **First time:** You may need to trust the developer certificate on your device:
-   - Settings → General → Device Management → Trust
-
-### Archive for Distribution
+Если другой версии симулятора нет:
 
 ```bash
-xcodebuild archive \
-  -project VOLNA.xcodeproj \
-  -scheme VOLNA \
-  -sdk iphoneos \
-  -configuration Release \
-  -archivePath build/VOLNA.xcarchive
+xcrun simctl list devices available
 ```
 
-### Export IPA
+и подставьте доступное имя.
 
-Create `ExportOptions.plist`:
-
-```xml
-<?xml version="1.0" encoding="UTF-8"?>
-<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
-<plist version="1.0">
-<dict>
-    <key>method</key>
-    <string>development</string>
-    <key>teamID</key>
-    <string>YOUR_TEAM_ID</string>
-    <key>compileBitcode</key>
-    <false/>
-</dict>
-</plist>
-```
-
-Then export:
-
-```bash
-xcodebuild -exportArchive \
-  -archivePath build/VOLNA.xcarchive \
-  -exportPath build \
-  -exportOptionsPlist ExportOptions.plist
-```
-
-The IPA will be at `build/VOLNA.ipa`.
-
----
-
-## GitHub Actions CI/CD
-
-### Setup Secrets
-
-For automated IPA builds, configure these GitHub Secrets:
-
-1. Go to your repository on GitHub
-2. Settings → Secrets and variables → Actions
-3. Add the following secrets:
-
-#### Required Secrets
-
-| Secret Name | Description | How to Get |
-|-------------|-------------|------------|
-| `BUILD_CERTIFICATE_BASE64` | Base64-encoded .p12 certificate | See below |
-| `P12_PASSWORD` | Password for .p12 certificate | Set when exporting |
-| `BUILD_PROVISION_PROFILE_BASE64` | Base64-encoded provisioning profile | See below |
-| `KEYCHAIN_PASSWORD` | Temporary keychain password | Any secure random string |
-| `APPLE_TEAM_ID` | Apple Developer Team ID | From Apple Developer portal |
-
-#### Exporting Certificate
-
-```bash
-# Export from Keychain Access
-# 1. Open Keychain Access
-# 2. Find your "Apple Development" or "Apple Distribution" certificate
-# 3. Export as .p12 with a password
-# 4. Convert to base64:
-
-base64 -i certificate.p12 | pbcopy
-# Paste into BUILD_CERTIFICATE_BASE64 secret
-```
-
-#### Exporting Provisioning Profile
-
-```bash
-# Download from Apple Developer portal
-# Then convert to base64:
-
-base64 -i profile.mobileprovision | pbcopy
-# Paste into BUILD_PROVISION_PROFILE_BASE64 secret
-```
-
-### Workflows
-
-The project includes two workflows:
-
-1. **Build** (`.github/workflows/build.yml`)
-   - Runs on push to main/develop
-   - Builds for simulator
-   - Runs tests
-   
-2. **Build IPA** (`.github/workflows/ipa.yml`)
-   - Runs on version tags (`v*.*.*`)
-   - Archives and exports IPA
-   - Creates GitHub Release
-
-#### Triggering a Release
-
-```bash
-git tag v0.1.0
-git push origin v0.1.0
-```
-
----
-
-## Testing
-
-### Run Unit Tests
+### Тесты
 
 ```bash
 xcodebuild test \
   -project VOLNA.xcodeproj \
   -scheme VOLNA \
+  -configuration Debug \
   -sdk iphonesimulator \
-  -destination 'platform=iOS Simulator,name=iPhone 15 Pro'
+  -destination 'platform=iOS Simulator,name=iPhone 16'
 ```
 
-### In Xcode
+Тестовый таргет `VOLNATests` хостится приложением (`TEST_HOST`), содержит unit-тесты лицензий, языков/транслитерации, дедупликации, форматов, прямых ссылок и LRC-парсера.
 
-Press **⌘U** or Product → Test
+### Устройство
+
+1. Подключите iPhone и Trust This Computer.
+2. В Xcode выберите target **VOLNA** → **Signing & Capabilities**.
+3. Укажите Team и при необходимости измените Bundle Identifier.
+4. Выберите устройство и нажмите **⌘R**.
+
+Для запуска на устройстве нужна ваша подпись. В репозитории сертификаты не хранятся.
 
 ---
 
-## Troubleshooting
+## API и секреты
 
-### XcodeGen Issues
+| Сервис | Ключ | Где хранится |
+|---|---|---|
+| Jamendo | публичный Client ID `b488b912` | в коде, это не секрет |
+| Internet Archive | не требуется | — |
+| Wikimedia Commons | не требуется | — |
+| Openverse | не требуется (анонимный лимит) | — |
+| LRCLIB | не требуется | — |
 
-**Problem:** `xcodegen: command not found`
+**Jamendo Client Secret не используется.** Не добавляйте его в репозиторий, `Info.plist`, `.xcconfig` или secrets workflow: приложение работает только с публичным Client ID.
+
+---
+
+## GitHub Actions
+
+### Build and Test
+
+Файл: `.github/workflows/build.yml`
+
+Запускается при push и pull request в `master` и `feature/open-music-catalog`, а также вручную. Выполняет:
+
+1. `xcodegen generate`
+2. сборку под iOS Simulator;
+3. выбор доступного iPhone-симулятора;
+4. `xcodebuild test`.
+
+### Build IPA
+
+Файл: `.github/workflows/ipa.yml`
+
+Запускается по тегам `v*.*.*` и вручную. Логика:
+
+- если **все** signing secrets заданы — archive + export подписанной IPA (`VOLNA-signed.ipa`);
+- если хотя бы одного секрета нет — archive без подписи и упаковка `VOLNA-unsigned.ipa`;
+- артефакт `VOLNA-IPA` загружается всегда;
+- для тега создаётся GitHub Release с честным описанием файлов.
+
+### Signing secrets (необязательно)
+
+| Secret | Назначение |
+|---|---|
+| `BUILD_CERTIFICATE_BASE64` | `.p12` сертификат в base64 |
+| `P12_PASSWORD` | пароль `.p12` |
+| `BUILD_PROVISION_PROFILE_BASE64` | `.mobileprovision` в base64 |
+| `KEYCHAIN_PASSWORD` | пароль временной keychain |
+| `DEVELOPMENT_TEAM` | Apple Developer Team ID |
+
+Если секретов нет, CI **не** пытается подписывать и **не** выдаёт неподписанный файл за устанавливаемый.
+
+Получить base64 на macOS:
+
+```bash
+base64 -i certificate.p12 | pbcopy
+base64 -i profile.mobileprovision | pbcopy
+```
+
+### Неподписанная IPA
+
+`VOLNA-unsigned.ipa`:
+
+- не устанавливается двойным щелчком;
+- не предназначена для App Store;
+- требует собственной подписи (AltStore, Sideloadly, Xcode) и вашей учётной записи Apple;
+- собрана из `Release`-конфигурации без signing identity.
+
+### Ручной запуск
+
+Actions → **Build IPA** → Run workflow. Артефакт появится в разделе Artifacts завершённого запуска.
+
+### Release
+
+```bash
+git tag v1.0.0
+git push origin v1.0.0
+```
+
+Тег запускает `ipa.yml`. Если подпись не настроена, к релизу будет приложена только неподписанная IPA с соответствующим описанием.
+
+---
+
+## Проверка качества
+
+В репозитории есть статическая проверка исходников, но **физический iPhone в рамках разработки не использовался**. Поэтому:
+
+- сборка и unit-тесты подтверждаются CI;
+- воспроизведение, фон, экран блокировки, прерывания и маршруты аудио требуют проверки на реальном устройстве;
+- сетевые провайдеры проверялись живыми HTTP-запросами (Jamendo, Internet Archive, Wikimedia, Openverse), но это не заменяет тест на iPhone.
+
+---
+
+## Частые проблемы
+
+### `xcodegen: command not found`
+
 ```bash
 brew install xcodegen
 ```
 
-**Problem:** Project generation fails
-```bash
-# Check project.yml syntax
-xcodegen generate --verbose
-```
-
-### Build Errors
-
-**Problem:** Swift package resolution fails
-```bash
-# Clean and rebuild
-rm -rf .build
-xcodebuild -resolvePackageDependencies -project VOLNA.xcodeproj -scheme VOLNA
-```
-
-**Problem:** Code signing issues
-1. Verify your Apple Developer account is active
-2. Check Bundle Identifier is unique
-3. Ensure provisioning profile matches the Bundle ID
-
-### Audio Playback Issues
-
-**Problem:** No sound in background
-1. Check Info.plist has `audio` background mode
-2. Verify AVAudioSession is configured correctly
-3. Test on a real device (simulator may have limitations)
-
-**Problem:** Lock screen controls not working
-1. Check MPNowPlayingInfoCenter is updated
-2. Verify MPRemoteCommandCenter handlers are registered
-
-### API Issues
-
-**Problem:** Jamendo returns 401 Unauthorized
-- Check your Client ID is correct
-- Verify API key is not expired
-- Try regenerating the key from Jamendo developer portal
-
-**Problem:** Rate limit exceeded
-- Implement proper request throttling
-- Add delays between requests
-- Cache responses when possible
-
----
-
-## Clean Build
+### `VOLNA.xcodeproj` отсутствует
 
 ```bash
-# Remove all generated files
-rm -rf build/
-rm -rf VOLNA.xcodeproj
-rm -rf .swiftpm/
-rm -rf ~/Library/Developer/Xcode/DerivedData/VOLNA-*
-
-# Regenerate
 xcodegen generate
-
-# Clean build
-xcodebuild clean -project VOLNA.xcodeproj -scheme VOLNA
 ```
 
----
+### Ошибка подписи в CI
 
-## Development Tips
+Проверьте, что заданы все пять signing secrets и что Bundle ID `com.volna.app` присутствует в provisioning profile. Без секретов используйте неподписанную сборку.
 
-### Live Preview
+### Jamendo возвращает пустую выдачу по-русски
 
-SwiftUI previews are available in Xcode. Look for `#Preview` macros in view files.
+Jamendo ищет по языку метаданных. Для кириллических запросов приложение добавляет `lang=ru`. Это поведение проверено живыми запросами; см. [RUSSIAN_CATALOG.md](RUSSIAN_CATALOG.md).
 
-### Hot Reload
+### Нет звука в фоне на симуляторе
 
-For faster iteration:
-1. Keep simulator running
-2. Make changes
-3. Press **⌘R** to rebuild and run
-
-### Debugging Audio
-
-```swift
-// Add in PlayerService
-print("🎵 Current time: \(currentTime)")
-print("🎵 Duration: \(duration)")
-print("🎵 Playing: \(isPlaying)")
-```
-
-### Network Debugging
-
-Enable network logging:
-```swift
-// In provider init
-let config = URLSessionConfiguration.default
-config.timeoutIntervalForRequest = 30
-config.waitsForConnectivity = true
-// Add URLSession delegate for detailed logs
-```
-
----
-
-## Performance Optimization
-
-### Build Time
-
-```bash
-# Use multiple CPU cores
-xcodebuild -parallelizeTargets
-```
-
-### App Size
-
-The IPA size can be reduced by:
-- Using asset catalogs for images
-- Enabling bitcode (if targeting App Store)
-- Removing unused dependencies
-
----
-
-## Resources
-
-- [Swift Documentation](https://swift.org/documentation/)
-- [SwiftUI Tutorials](https://developer.apple.com/tutorials/swiftui)
-- [AVFoundation Guide](https://developer.apple.com/av-foundation/)
-- [XcodeGen Documentation](https://github.com/yonaskolb/XcodeGen/blob/master/Docs/ProjectSpec.md)
-
----
-
-## Support
-
-- **Issues:** [GitHub Issues](https://github.com/yourusername/VOLNA/issues)
-- **Discussions:** [GitHub Discussions](https://github.com/yourusername/VOLNA/discussions)
-- **Documentation:** [Documentation/](.)
-
----
-
-**Last Updated:** November 12, 2026
+Фоновое аудио проверяется на устройстве. Убедитесь, что в `Info.plist` включён `UIBackgroundModes` → `audio`, а на устройстве не активен режим энергосбережения, ограничивающий фон.

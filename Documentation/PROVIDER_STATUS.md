@@ -1,407 +1,122 @@
-# VOLNA - Music Provider Status
+# VOLNA — статус музыкальных источников
 
-**Last Updated:** November 12, 2026
+**Обновлено:** 12 ноября 2026  
+**Версия приложения:** 1.0.0
 
----
+## Сводка
 
-## Overview
+| Источник | Интеграция | Поиск | Поток | Лицензия | Русский |
+|---|---|---|---|---|---|
+| Jamendo | ✅ | ✅ | ✅ | по каждому треку | ✅ |
+| Internet Archive | ✅ | ✅ | ✅ | только известные открытые | ✅ |
+| Wikimedia Commons | ✅ | ✅ | ✅ через MP3-транскодию | из `extmetadata` | ✅ |
+| Openverse | ✅ дополнительный | ✅ | ✅ | CC/PD | ограниченно |
+| Прямые ссылки | ✅ локально | ✅ | ✅ | указывает пользователь | ✅ |
 
-VOLNA currently supports **3 music providers** with plans to expand:
-
-| Provider | Status | Search | Audio | Russian | License Check |
-|----------|--------|--------|-------|---------|---------------|
-| **Jamendo** | ✅ Active | ✅ | ⏳ | Limited | ✅ |
-| **Internet Archive** | ✅ Active | ✅ | ⏳ | ✅ Good | ✅ |
-| **Wikimedia Commons** | ✅ Active | ✅ | ⏳ | ✅ Good | ✅ |
-
-**Legend:**
-- ✅ Implemented and working
-- ⏳ Implemented, needs testing
-- ❌ Not working
-- 🔨 In progress
-- 📋 Planned
+«✅» означает, что код реализован и API проверен живыми запросами. **Воспроизведение на физическом iPhone не проверялось** — см. раздел «Ограничения проверки».
 
 ---
 
-## 1. Jamendo ✅
+## 1. Jamendo
 
-### Status
-- **Implementation:** Complete
-- **API Key:** Configured (Client ID: b488b912)
-- **Last Tested:** November 12, 2026
-- **Search:** Working
-- **Audio Playback:** Needs device testing
+- **API:** `https://api.jamendo.com/v3.0`
+- **Ключ:** публичный Client ID `b488b912`; Client Secret не используется.
+- **Что реализовано:** поиск треков, альбомов и исполнителей, обложки, MP3-потоки, лицензия и разрешение на скачивание для каждого трека.
+- **Лицензии:** CC BY, BY-SA, BY-ND, BY-NC, BY-NC-SA, BY-NC-ND. Тип и ссылка берутся из ответа Jamendo, а не назначаются всем трекам одинаково.
+- **Русский язык:** для кириллического запроса добавляется `lang=ru`. Без этого параметра запрос «русский рок» вернул 0 результатов; с `lang=ru` — 5. Запрос `russian rock` без `lang` также вернул результаты.
 
-### Capabilities
-- ✅ Track search
-- ✅ Album search (implemented)
-- ✅ Artist search (implemented)
-- ✅ Artwork (600x600)
-- ✅ Direct MP3 streams (320kbps)
-- ✅ License information (all CC)
-- ❌ Lyrics
-
-### API Details
-- **Base URL:** https://api.jamendo.com/v3.0
-- **Authentication:** Client ID only (public read access)
-- **Rate Limits:** Unknown (to be tested)
-- **Format:** JSON
-- **Audio Format:** MP3 (320kbps)
-
-### Russian Content
-- **Availability:** Limited
-- **Strategy:** Search with Russian keywords and transliteration
-- **Expected Results:** ~100-500 tracks
-
-### License Model
-- **All tracks:** Creative Commons licensed
-- **Types:** CC-BY, CC-BY-SA, CC-BY-ND, CC-BY-NC, CC-BY-NC-SA, CC-BY-NC-ND
-- **Commercial Use:** Varies by track
-- **Attribution:** Required
-- **Download:** Allowed for most tracks
-
-### Known Issues
-- API key should not be hardcoded in production
-- Rate limit handling needs testing
-- No server-side filtering for Russian content
-
-### Sample Search Queries
-```
-Mияги
-Russian rock
-Русская музыка
-Independent Russian artists
-```
+**Живая проверка:** поиск `русский рок` → 5 треков; аудио `prod-1.storage.jamendo.com` → HTTP 206, `Content-Type: audio/mpeg`, `Accept-Ranges: bytes`, корректный `Content-Range`.
 
 ---
 
-## 2. Internet Archive ✅
+## 2. Internet Archive
 
-### Status
-- **Implementation:** Complete
-- **API Key:** Not required
-- **Last Tested:** November 12, 2026
-- **Search:** Working
-- **Audio Playback:** Needs testing
+- **API:** `https://archive.org/advancedsearch.php` и `https://archive.org/metadata/{identifier}`
+- **Ключ:** не требуется.
+- **Что реализовано:** поиск по audio-элементам с обязательным `licenseurl:*`, получение метаданных, выбор MP3/M4A-файлов, обложка, страница элемента, лицензия элемента.
+- **Лицензии:** элемент без `licenseurl` или с неизвестной лицензией не попадает в выдачу. Для каждого элемента сохраняется его собственная лицензия.
+- **Форматы:** MP3, M4A, AAC, MP4. OGG/FLAC не передаются в AVPlayer.
+- **Русский язык:** поиск по названию, создателю и теме; язык определяется по метаданным и тексту, кириллица поднимается в ранжировании.
 
-### Capabilities
-- ✅ Audio search
-- ✅ Metadata retrieval
-- ✅ Direct file URLs
-- ✅ Multiple formats (MP3, OGG, FLAC)
-- ✅ License checking
-- ✅ Language filtering
-- ❌ Albums
-- ❌ Artist pages
-
-### API Details
-- **Base URL:** https://archive.org
-- **Authentication:** None required
-- **Rate Limits:** Be respectful, no official limit
-- **Format:** JSON
-- **Audio Formats:** MP3, OGG, FLAC, M4A, WAV
-
-### Russian Content
-- **Availability:** Good (estimated 1000+ tracks)
-- **Collections:**
-  - Live Music Archive
-  - Community Audio
-  - Russian folk music
-  - Classical recordings
-  - Historical archives
-- **Language Filter:** Supports `language:Russian` and `language:ru`
-
-### License Model
-- **Mixed licenses:** CC0, CC-BY, CC-BY-SA, Public Domain, Other
-- **Verification:** Checks `licenseurl` field in metadata
-- **Attribution:** Varies by item
-- **Download:** Most items allow download
-
-### Implementation Details
-```swift
-// Search query structure
-(title:(query) OR creator:(query)) AND mediatype:audio AND language:Russian
-
-// Metadata endpoint
-https://archive.org/metadata/{identifier}
-
-// File URL pattern
-https://archive.org/download/{identifier}/{filename}
-
-// Thumbnail
-https://archive.org/services/img/{identifier}
-```
-
-### Known Issues
-- Metadata quality varies
-- Some items may have incomplete license information
-- Not all audio files are music (may include audiobooks, lectures)
-- Need to filter non-music content
-
-### Sample Search Queries
-```
-Русские народные песни
-Russian folk music
-Tchaikovsky
-Rachmaninoff
-Soviet music archive
-```
+**Живая проверка:** запрос с `mediatype:(audio) AND licenseurl:*` → 183 элемента; элемент `sukiny_syny_20_19` → лицензия CC BY-ND 4.0; файл MP3 → 302 на `*.archive.org`, затем HTTP 206, `audio/mpeg`, поддержка Range.
 
 ---
 
-## 3. Wikimedia Commons ✅
+## 3. Wikimedia Commons
 
-### Status
-- **Implementation:** Complete
-- **API Key:** Not required
-- **Last Tested:** November 12, 2026
-- **Search:** Working
-- **Audio Playback:** Needs testing
+- **API:** `https://commons.wikimedia.org/w/api.php`
+- **Ключ:** не требуется; отправляется описательный User-Agent.
+- **Что реализовано:** поиск файлов в namespace 6, `videoinfo` с `url|size|mime|extmetadata|derivatives|dimensions`, лицензия, атрибуция, страница файла.
+- **Форматы:** OGG/Opus/FLAC/WebM не отдаются в AVPlayer напрямую. Для них выбирается официальная MP3-транскодия Wikimedia из `derivatives`.
+- **Лицензии:** из `extmetadata`. Для Public Domain `LicenseUrl` может отсутствовать — тогда используется `LicenseShortName`; неизвестное значение остаётся `UNKNOWN`.
 
-### Capabilities
-- ✅ Audio file search
-- ✅ File metadata
-- ✅ Direct URLs
-- ✅ License information
-- ✅ Multiple formats
-- ❌ Albums
-- ❌ Artists
-- ❌ Artwork (audio files)
-
-### API Details
-- **Base URL:** https://commons.wikimedia.org/w/api.php
-- **Authentication:** None required
-- **Rate Limits:** Be respectful, use User-Agent
-- **Format:** JSON
-- **Audio Formats:** MP3, OGG, FLAC, WAV
-
-### Russian Content
-- **Availability:** Good (estimated 500+ files)
-- **Categories:**
-  - Category:Russian_music
-  - Category:Russian_folk_music
-  - Category:Russian_classical_music
-  - Category:Audio_files_in_Russian
-- **Content Types:**
-  - Folk songs
-  - Classical recordings
-  - Public domain music
-  - Educational recordings
-
-### License Model
-- **Primary:** CC-BY, CC-BY-SA, CC0, Public Domain
-- **Verification:** MediaWiki extmetadata provides license info
-- **Attribution:** Required for CC-BY licenses
-- **Download:** All files downloadable
-
-### Implementation Details
-```swift
-// Search
-action=query&list=search&srsearch=filetype:audio Russian music
-
-// File info
-action=query&prop=imageinfo&iiprop=url|size|mime|extmetadata|duration
-
-// Direct URL provided in response
-```
-
-### Known Issues
-- File titles may not be music-friendly (technical names)
-- Mixed content (music, speeches, sound effects)
-- Requires filtering for actual music
-- Some files are very short (samples)
-
-### Sample Search Queries
-```
-Russian folk song
-Русская народная песня
-Russian classical music
-Soviet anthem (public domain versions)
-```
+**Живая проверка:** поиск русской классики вернул файлы с CC BY-SA и Public Domain; MP3-транскодия `Ru-Charodeyka.ogg.mp3` → HTTP 206, `audio/mpeg`, Range поддерживается.
 
 ---
 
-## Planned Providers 📋
+## 4. Openverse (дополнительный агрегатор)
 
-### 4. Muxiv.com ⏳
-- **Status:** Researching
-- **Task:** Determine if public API exists
-- **Potential:** CC0/Public Domain focus
+- **API:** `https://api.openverse.org/v1/audio/`
+- **Ключ:** не требуется, но анонимный лимит — около 20 запросов/мин и 200/сутки на IP.
+- **Что реализовано:** поиск только по `source=jamendo,wikimedia_audio`, чтобы не дублировать остальные каталоги и не добавлять неизвестные источники. Лицензия и её URL берутся из ответа Openverse.
+- **Формат:** Openverse отдаёт Jamendo-файлы с `filetype: "mp32"`; это маппится в `audio/mpeg`.
+- **Роль:** дополнительный источник, не основа главной выдачи. Из-за лимита не используется для фоновых подборок.
 
-### 5. Free Music Archive (FMA) ⏳
-- **Status:** API status unclear
-- **Last known:** Had public API
-- **Action:** Verify current availability
-
-### 6. ccMixter ⏳
-- **Status:** To investigate
-- **Focus:** CC remixes and original music
-
-### 7. Musopen ⏳
-- **Status:** To investigate
-- **Focus:** Public domain classical music
-- **Russian Content:** High potential (Russian composers)
+**Живая проверка:** `q=rock` → 240 результатов; `source=jamendo` → результаты с `filetype=mp32` и CC-лицензиями; `q=russian rock&source=jamendo,wikimedia_audio` → 0, поэтому для русских запросов основной вклад дают Jamendo, Internet Archive и Wikimedia.
 
 ---
 
-## Testing Checklist
+## 5. Прямые ссылки (DirectMusicProvider)
 
-### Per-Provider Tests
-- [ ] Search returns results
-- [ ] Audio URLs are valid
-- [ ] Audio URLs are accessible (HTTP 200)
-- [ ] Content-Type is audio/*
-- [ ] Files are playable on iOS
-- [ ] License info is correct
-- [ ] Attribution is preserved
-- [ ] Rate limits respected
-- [ ] Error handling works
-- [ ] Timeout handling works
-
-### Russian Content Tests
-- [ ] Search with Cyrillic query
-- [ ] Search with transliterated query
-- [ ] Language filter works
-- [ ] Results are actually Russian
-- [ ] At least 10 tracks per provider
-
-### Integration Tests
-- [ ] Multi-provider search works
-- [ ] Deduplication works
-- [ ] Results merge correctly
-- [ ] One provider failure doesn't break others
-- [ ] Provider status monitoring works
+- **Тип:** локальный источник, данные в `Documents/VOLNA/direct_links.json`.
+- **Что проверяется перед добавлением:** HTTPS, HTTP-статус, `Content-Type`, финальный URL после редиректов, `Accept-Ranges`, размер, таймауты 15/25 с.
+- **Форматы:** MP3, AAC, M4A, WAV, FLAC, HLS.
+- **Защита:** HTML и прочие неаудиоответы отклоняются; приложение не пытается «играть» веб-страницу.
+- **Лицензия:** выбирает пользователь. По умолчанию — `UNKNOWN`; неизвестная лицензия не считается свободной.
 
 ---
 
-## Performance Benchmarks
+## Источники, которые не интегрированы
 
-### Target Metrics
-- **Search latency:** < 2 seconds per provider
-- **Total search time:** < 5 seconds (parallel)
-- **Audio start time:** < 1 second
-- **Memory usage:** < 50MB for provider operations
+Это не «заглушки»: соответствующие пункты отсутствуют в поиске.
 
-### Current Status
-⏳ Not yet benchmarked (requires device testing)
+| Источник | Причина |
+|---|---|
+| **ccMixter** | Аудио отдаётся с 403 без браузерного Referer. Обход проверки запрещён. |
+| **Audius** | Публичный API заблокирован Cloudflare для не-браузерных клиентов. |
+| **Musopen** | Сайт/API закрыт Cloudflare; стабильного официального публичного API нет. |
+| **Free Music Archive** | Публичный API выведен из эксплуатации; прямые ссылки на файлы запрещены условиями. |
+| **Muxiv** | Есть бесплатные треки, но нет документированного публичного API; robots.txt запрещает `/api/`. |
+| **OpenGameArt** | Официального API нет; скрейпинг не используется. |
 
----
-
-## Error Scenarios
-
-### Handled Errors
-- ✅ Network timeout
-- ✅ HTTP 404 (Not Found)
-- ✅ HTTP 429 (Rate Limit)
-- ✅ Invalid JSON response
-- ✅ Missing audio file
-- ✅ Invalid audio URL
-
-### Edge Cases
-- Provider temporarily offline
-- Search returns no results
-- Audio file deleted/moved
-- License information missing
-- Malformed metadata
+VOLNA не обходит Cloudflare, Referer-проверки, DRM и ограничения robots.txt. Если у источника нет легального стабильного API, он остаётся вне приложения.
 
 ---
 
-## Usage Examples
+## Модель лицензий
 
-### Search Flow
-```
-User: "Мияги"
-↓
-SearchService queries 3 providers in parallel:
-├─ Jamendo: 2 results
-├─ Internet Archive: 5 results
-└─ Wikimedia Commons: 0 results
-↓
-Deduplication: 7 unique tracks
-↓
-Display results with source badges
-```
-
-### Playback Flow
-```
-User selects track
-↓
-PlayerService resolves stream URL
-↓
-Check availability (HEAD request)
-↓
-Start AVPlayer with URL
-↓
-Update Now Playing info
-↓
-Show player UI
-```
+- Лицензия хранится **на уровне трека и потока**, а не назначается каталогу целиком.
+- После дедупликации трек может содержать несколько потоков от разных источников; лицензия и ссылка выбираются у трека с известной открытой лицензией, а не у случайного источника.
+- Разрешение на поток (`isStreamAllowed`) и разрешение на скачивание (`isDownloadAllowed`) хранятся отдельно.
+- `UNKNOWN`, `Other`, `Restricted` не считаются открытыми лицензиями.
+- Для CC BY и CC BY-SA требуется атрибуция; приложение показывает доступные сведения об авторе и ссылке на лицензию.
 
 ---
 
-## Maintenance
+## Ограничения проверки
 
-### Regular Tasks
-- **Weekly:** Check provider API status
-- **Monthly:** Verify sample searches still work
-- **Quarterly:** Review license compliance
-- **Yearly:** Check for API changes
-
-### Monitoring
-- Provider success/failure rates
-- Average search latency
-- Audio playback success rate
-- User-reported issues
+- Живые HTTP-проверки выполнялись из Windows через публичные API. Они подтверждают доступность поиска, метаданных, лицензий и Range-запросов, но **не** подтверждают воспроизведение AVPlayer на iPhone.
+- Фоновое аудио, экран блокировки, Control Center, прерывания, смена аудиомаршрута и восстановление состояния реализованы, но требуют проверки на устройстве.
+- Сборка и unit-тесты проверяются GitHub Actions на macOS.
+- Никаких заявлений о тестировании на физическом iPhone нет, пока такое тестирование не будет действительно выполнено.
 
 ---
 
-## Security & Privacy
+## Правила добавления нового источника
 
-### Data Handling
-- ✅ No user data sent to providers
-- ✅ No tracking or analytics
-- ✅ Search queries not logged
-- ✅ Playback history stored locally only
-
-### API Keys
-- ✅ Jamendo Client ID can be public (read-only)
-- ❌ Client Secret must NOT be in IPA
-- ✅ No other providers require keys
-
----
-
-## Legal Compliance
-
-### License Verification
-All providers check and store:
-- License type
-- License URL
-- Attribution requirements
-- Commercial use permissions
-- Derivative work permissions
-
-### User Responsibilities
-- Check individual track licenses
-- Provide attribution when required
-- Respect usage restrictions
-- Don't redistribute without permission
-
----
-
-**Status Summary:**
-- ✅ 3 providers implemented
-- ⏳ Device testing pending
-- ✅ License compliance implemented
-- ✅ Russian content support added
-- 📋 4 additional providers planned
-
-**Next Actions:**
-1. Test on real device
-2. Verify audio playback
-3. Benchmark performance
-4. Document any issues
-5. Expand to additional providers
-
----
-
-*Last reviewed: November 12, 2026*
+1. Официальный публичный API и условия использования допускают клиентский доступ.
+2. Есть прямая аудиоссылка, которую воспроизводит AVPlayer, либо официальная транскодия.
+3. Для каждого трека доступна лицензия; неизвестная не выдаётся за свободную.
+4. Источник не требует обхода защиты, Referer, Cloudflare или robots.txt.
+5. Ошибки источника изолированы и не ломают выдачу остальных.
+6. Добавлены живые проверки и честный статус в этом документе.
