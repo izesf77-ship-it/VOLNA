@@ -5,6 +5,12 @@ struct SettingsView: View {
         NavigationStack {
             List {
                 Section("Источники музыки") {
+                    NavigationLink {
+                        ProviderStatusView()
+                    } label: {
+                        Label("Музыкальные провайдеры", systemImage: "music.note.list")
+                    }
+                    
                     ProviderRow(
                         name: "Jamendo",
                         icon: "music.note",
@@ -14,7 +20,13 @@ struct SettingsView: View {
                     ProviderRow(
                         name: "Internet Archive",
                         icon: "archivebox.fill",
-                        isEnabled: false
+                        isEnabled: true
+                    )
+                    
+                    ProviderRow(
+                        name: "Wikimedia Commons",
+                        icon: "book.fill",
+                        isEnabled: true
                     )
                 }
                 
@@ -41,7 +53,7 @@ struct SettingsView: View {
                 }
                 
                 Section("О приложении") {
-                    LabeledContent("Версия", value: "0.1.0")
+                    LabeledContent("Версия", value: "0.2.0")
                     
                     NavigationLink {
                         Text("Лицензии")
