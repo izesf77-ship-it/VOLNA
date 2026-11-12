@@ -19,7 +19,7 @@ actor JamendoProvider: MusicProvider {
     )
     
     private let baseURL = "https://api.jamendo.com/v3.0"
-    private let clientID = "YOUR_CLIENT_ID" // TODO: Get from config or environment
+    private let clientID = "b488b912" // Real Jamendo Client ID
     
     private let urlSession: URLSession
     

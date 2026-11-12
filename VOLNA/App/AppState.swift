@@ -42,6 +42,10 @@ final class AppState {
         let archiveProvider = InternetArchiveProvider()
         await providerRegistry.register(archiveProvider)
         
+        // Register Wikimedia Commons provider
+        let wikiProvider = WikimediaCommonsProvider()
+        await providerRegistry.register(wikiProvider)
+        
         print("✅ Registered \(await providerRegistry.providerCount) music providers")
     }
 }
