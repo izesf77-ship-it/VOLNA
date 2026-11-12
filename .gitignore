@@ -1,32 +1,22 @@
 # Xcode
 *.xcodeproj
-!*.xcodeproj/project.pbxproj
-!*.xcodeproj/xcshareddata/
-!*.xcworkspace/contents.xcworkspacedata
-/*.gcno
-*.pbxuser
-*.mode1v3
-*.mode2v3
-*.perspectivev3
+*.xcworkspace
 xcuserdata/
-*.xccheckout
-*.moved-aside
-DerivedData
-*.hmap
+DerivedData/
+build/
 *.ipa
-*.dSYM.zip
+*.app
+*.xcarchive
 *.dSYM
-
-# CocoaPods
-Pods/
-!Podfile.lock
+*.dSYM.zip
 
 # Swift Package Manager
 .build/
 .swiftpm/
 
-# Carthage
-Carthage/Build
+# CocoaPods / Carthage
+Pods/
+Carthage/Build/
 
 # Fastlane
 fastlane/report.xml
@@ -34,59 +24,25 @@ fastlane/Preview.html
 fastlane/screenshots/**/*.png
 fastlane/test_output
 
-# Code Injection
-iOSInjectionProject/
-
-# macOS
-.DS_Store
-
-# Build
-build/
-*.ipa
-*.app
-
-# User-specific secrets
+# Secrets and local configuration
 secrets.json
 config.json
+*.p12
+*.mobileprovision
 
-# Temporary files
+# Probe artifacts (API research, not part of the app)
+/*.json
+/*.txt
+/*.bin
+/*.zip
+/*.html
+/mux_robots.txt
+/test_apis.sh
+
+# macOS / IDEs
+.DS_Store
+.vscode/
+.idea/
 *.swp
 *.swo
 *~
-
-# IDEs
-.vscode/
-.idea/
-
-# Generated
-*.generated.swift
-Documentation: VOLNA is a free, open-source iOS music application combining multiple legal music sources into a unified streaming experience. The project is fully native Swift/SwiftUI built following modern iOS development practices. No backend, no database, everything runs locally on the device.
-
-**Current Status (Stage 1 - Foundation Complete):**
-
-✅ **Completed:**
-- Project structure created with XcodeGen configuration
-- Domain models (Track, Album, Artist, Playlist, StreamSource)
-- MusicProvider protocol and ProviderRegistry
-- JamendoProvider implementation (basic)
-- PlayerService with background audio support
-- SearchService with multi-provider and deduplication
-- LyricsService (LRCLIB integration)
-- LibraryService (local JSON storage)
-- Basic UI screens (Home, Search, Library, Settings)
-- Design system with VOLNA color palette
-- Info.plist with audio background mode
-- README with full project documentation
-- Research document with API analysis
-
-🔨 **Next Steps:**
-- Complete InternetArchiveProvider implementation
-- Test Jamendo API integration (need API key)
-- Implement actual audio playback (integrate AudioStreaming library)
-- Create mini-player component
-- Create full-screen player UI
-- Add artwork caching
-- Setup GitHub Actions workflow
-- Generate app icon and assets
-
-The foundation is solid and ready for the next phase of development. The architecture follows best practices with clear separation between providers, services, and UI layers.
