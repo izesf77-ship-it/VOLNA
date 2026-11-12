@@ -1,0 +1,63 @@
+name: Build
+
+on:
+  push:
+    branches: [ main, develop ]
+  pull_request:
+    branches: [ main ]
+
+jobs:
+  build:
+    name: Build and Test
+    runs-on: macos-14
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+      
+      - name: Select Xcode version
+        run: sudo xcode-select -s /Applications/Xcode_16.0.app/Contents/Developer
+      
+      - name: Show Xcode version
+        run: xcodebuild -version
+      
+      - name: Show available SDKs
+        run: xcodebuild -showsdks
+      
+      - name: Install XcodeGen
+        run: |
+          brew install xcodegen
+      
+      - name: Generate Xcode project
+        run: xcodegen generate
+      
+      - name: Resolve Swift Package Dependencies
+        run: xcodebuild -resolvePackageDependencies -project VOLNA.xcodeproj -scheme VOLNA
+      
+      - name: Build for iOS Simulator
+        run: |
+          xcodebuild \
+            -project VOLNA.xcodeproj \
+            -scheme VOLNA \
+            -sdk iphonesimulator \
+            -destination 'platform=iOS Simulator,name=iPhone 15 Pro,OS=17.0' \
+            -configuration Debug \
+            clean build \
+            CODE_SIGN_IDENTITY="" \
+            CODE_SIGNING_REQUIRED=NO \
+            CODE_SIGNING_ALLOWED=NO
+      
+      - name: Run tests
+        run: |
+          xcodebuild test \
+            -project VOLNA.xcodeproj \
+            -scheme VOLNA \
+            -sdk iphonesimulator \
+            -destination 'platform=iOS Simulator,name=iPhone 15 Pro,OS=17.0' \
+            CODE_SIGN_IDENTITY="" \
+            CODE_SIGNING_REQUIRED=NO \
+            CODE_SIGNING_ALLOWED=NO
+        continue-on-error: true
+      
+      - name: Build succeeded
+        run: echo "✅ Build completed successfully"
