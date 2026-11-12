@@ -293,7 +293,6 @@ extension View {
         modifier(VolnaScreenModifier())
     }
 }
-}
 
 struct VolnaPrimaryButtonStyle: ButtonStyle {
     func makeBody(configuration: Configuration) -> some View {
