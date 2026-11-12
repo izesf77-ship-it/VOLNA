@@ -4,6 +4,7 @@ struct LibraryView: View {
     @Environment(AppState.self) private var appState
     @State private var showCreatePlaylist = false
     @State private var newPlaylistTitle = ""
+    @State private var showSettings = false
 
     var body: some View {
         NavigationStack {
@@ -25,6 +26,7 @@ struct LibraryView: View {
             .navigationDestination(for: Playlist.self) { playlist in
                 PlaylistDetailView(playlistID: playlist.id)
             }
+            .navigationDestination(isPresented: $showSettings) { SettingsView() }
             .alert("Новый плейлист", isPresented: $showCreatePlaylist) {
                 TextField("Название", text: $newPlaylistTitle)
                 Button("Создать") {
@@ -44,21 +46,29 @@ struct LibraryView: View {
         HStack(alignment: .center) {
             VStack(alignment: .leading, spacing: 4) {
                 Text("Медиатека")
-                    .font(.system(size: 34, weight: .bold, design: .default))
+                    .font(VolnaFont.custom(32, weight: .bold, relativeTo: .largeTitle))
                     .foregroundStyle(Color.volnaTextPrimary)
                 Text("Ваша музыка и плейлисты")
-                    .font(.system(size: 15, weight: .regular, design: .default))
+                    .font(VolnaFont.custom(15, weight: .regular, relativeTo: .subheadline))
                     .foregroundStyle(Color.volnaTextSecondary)
             }
             Spacer()
-            Button {
-                newPlaylistTitle = ""
-                showCreatePlaylist = true
-            } label: {
-                Image(systemName: "plus")
+            HStack(spacing: 8) {
+                Button {
+                    newPlaylistTitle = ""
+                    showCreatePlaylist = true
+                } label: {
+                    Image(systemName: "plus")
+                }
+                .buttonStyle(VolnaIconButtonStyle(size: 40))
+                .accessibilityLabel("Создать плейлист")
+
+                Button { showSettings = true } label: {
+                    Image(systemName: "gearshape")
+                }
+                .buttonStyle(VolnaIconButtonStyle(size: 40))
+                .accessibilityLabel("Настройки")
             }
-            .buttonStyle(VolnaIconButtonStyle())
-            .accessibilityLabel("Создать плейлист")
         }
     }
 

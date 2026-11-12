@@ -186,8 +186,11 @@ struct PlayerView: View {
                         .font(.system(size: 24, weight: .medium))
                         .foregroundStyle(appState.library.isFavorite(track) ? Color.volnaMagenta : Color.volnaTextSecondary)
                         .frame(width: 44, height: 44)
+                        .symbolEffect(.bounce, value: appState.library.isFavorite(track))
+                        .contentTransition(.symbolEffect(.replace))
                 }
                 .buttonStyle(.plain)
+                .accessibilityLabel(appState.library.isFavorite(track) ? "Убрать из избранного" : "В избранное")
             }
 
             HStack(spacing: 8) {
@@ -257,55 +260,63 @@ struct PlayerView: View {
                     .font(.system(size: 20, weight: .medium))
                     .foregroundStyle(player.isShuffled ? Color.volnaPurple : Color.volnaTextSecondary)
                     .frame(width: 44, height: 44)
+                    .symbolEffect(.bounce, value: player.isShuffled)
             }
             .buttonStyle(.plain)
             .frame(maxWidth: .infinity)
+            .accessibilityLabel("Перемешивание")
 
             Button { player.previous() } label: {
-                Image(systemName: "backward.fill")
-                    .font(.system(size: 28, weight: .semibold))
+                Image(systemName: "backward.end.fill")
+                    .font(.system(size: 26, weight: .semibold))
                     .foregroundStyle(Color.volnaTextPrimary)
                     .frame(width: 56, height: 56)
             }
             .buttonStyle(.plain)
             .frame(maxWidth: .infinity)
+            .accessibilityLabel("Предыдущий трек")
 
             Button { player.togglePlayPause() } label: {
                 ZStack {
                     Circle()
                         .fill(Color.white)
-                        .frame(width: 72, height: 72)
-                        .shadow(color: .white.opacity(0.15), radius: 16, y: 4)
+                        .frame(width: 76, height: 76)
+                        .shadow(color: .white.opacity(0.18), radius: 18, y: 6)
                     if player.isBuffering {
                         ProgressView().tint(.black).scaleEffect(1.1)
                     } else {
                         Image(systemName: player.isPlaying ? "pause.fill" : "play.fill")
-                            .font(.system(size: 28, weight: .bold))
+                            .font(.system(size: 30, weight: .bold))
                             .foregroundStyle(.black)
                             .offset(x: player.isPlaying ? 0 : 2)
+                            .contentTransition(.symbolEffect(.replace))
                     }
                 }
             }
             .buttonStyle(.plain)
             .frame(maxWidth: .infinity)
+            .accessibilityLabel(player.isPlaying ? "Пауза" : "Воспроизвести")
 
             Button { player.next() } label: {
-                Image(systemName: "forward.fill")
-                    .font(.system(size: 28, weight: .semibold))
+                Image(systemName: "forward.end.fill")
+                    .font(.system(size: 26, weight: .semibold))
                     .foregroundStyle(Color.volnaTextPrimary)
                     .frame(width: 56, height: 56)
             }
             .buttonStyle(.plain)
             .frame(maxWidth: .infinity)
+            .accessibilityLabel("Следующий трек")
 
             Button { player.cycleRepeatMode() } label: {
                 Image(systemName: player.repeatMode == .one ? "repeat.1" : "repeat")
                     .font(.system(size: 20, weight: .medium))
                     .foregroundStyle(player.repeatMode == .off ? Color.volnaTextSecondary : Color.volnaPurple)
                     .frame(width: 44, height: 44)
+                    .contentTransition(.symbolEffect(.replace))
             }
             .buttonStyle(.plain)
             .frame(maxWidth: .infinity)
+            .accessibilityLabel("Повтор")
         }
         .padding(.vertical, 8)
     }

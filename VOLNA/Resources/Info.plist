@@ -56,5 +56,9 @@
 	</dict>
 	<key>ITSAppUsesNonExemptEncryption</key>
 	<false/>
+	<key>UIAppFonts</key>
+	<array>
+		<string>Onest-wght.ttf</string>
+	</array>
 </dict>
 </plist>

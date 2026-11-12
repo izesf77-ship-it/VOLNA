@@ -8,48 +8,50 @@ struct SettingsView: View {
     private var settings: SettingsStore { appState.settings }
 
     var body: some View {
-        NavigationStack {
-            ScrollView(showsIndicators: false) {
-                VStack(alignment: .leading, spacing: 20) {
-                    header
-                    sourcesCard
-                    behaviorCard
-                    directLinksCard
-                    dataCard
-                    aboutCard
-                    footer
-                }
-                .padding(.horizontal, VolnaLayout.horizontalPadding)
-                .padding(.top, 12)
-                .padding(.bottom, 16)
+        ScrollView(showsIndicators: false) {
+            VStack(alignment: .leading, spacing: 24) {
+                header
+                sourcesCard
+                behaviorCard
+                directLinksCard
+                dataCard
+                aboutCard
+                footer
             }
-            .volnaScreenLayout()
-            .toolbar(.hidden, for: .navigationBar)
-            .navigationDestination(for: String.self) { destination in
-                switch destination {
-                case "sources": SourcesView()
-                case "direct": DirectLinksView()
-                case "licenses": LicensesView()
-                default: EmptyView()
-                }
+            .padding(.horizontal, VolnaLayout.horizontalPadding)
+            .padding(.top, 12)
+            .padding(.bottom, 16)
+        }
+        .volnaScreenLayout()
+        .navigationTitle("Настройки")
+        .navigationBarTitleDisplayMode(.inline)
+        .toolbarBackground(Color.volnaBackground.opacity(0.96), for: .navigationBar)
+        .toolbarBackground(.visible, for: .navigationBar)
+        .toolbarColorScheme(.dark, for: .navigationBar)
+        .navigationDestination(for: String.self) { destination in
+            switch destination {
+            case "sources": SourcesView()
+            case "direct": DirectLinksView()
+            case "licenses": LicensesView()
+            default: EmptyView()
             }
-            .alert("Кэш очищен", isPresented: $showClearedCache) {
-                Button("OK", role: .cancel) {}
-            } message: {
-                Text("Кэшированные обложки и ответы API удалены. Медиатека не затронута.")
+        }
+        .alert("Кэш очищен", isPresented: $showClearedCache) {
+            Button("OK", role: .cancel) {}
+        } message: {
+            Text("Кэшированные обложки и ответы API удалены. Медиатека не затронута.")
+        }
+        .confirmationDialog(
+            "Сбросить настройки?",
+            isPresented: $confirmReset,
+            titleVisibility: .visible
+        ) {
+            Button("Сбросить", role: .destructive) {
+                settings.resetToDefaults()
             }
-            .confirmationDialog(
-                "Сбросить настройки?",
-                isPresented: $confirmReset,
-                titleVisibility: .visible
-            ) {
-                Button("Сбросить", role: .destructive) {
-                    settings.resetToDefaults()
-                }
-                Button("Отмена", role: .cancel) {}
-            } message: {
-                Text("Будут включены все источники и восстановлены настройки по умолчанию. Медиатека останется на месте.")
-            }
+            Button("Отмена", role: .cancel) {}
+        } message: {
+            Text("Будут включены все источники и восстановлены настройки по умолчанию. Медиатека останется на месте.")
         }
     }
 

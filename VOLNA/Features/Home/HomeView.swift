@@ -2,28 +2,45 @@ import SwiftUI
 
 struct HomeView: View {
     @Environment(AppState.self) private var appState
+    @State private var showSettings = false
+
+    private var historyTracks: [Track] { Array(appState.library.history.prefix(12)) }
+    private var favoriteTracks: [Track] { Array(appState.library.favorites.prefix(12)) }
+    private var recentPlaylists: [Playlist] { Array(appState.library.playlists.prefix(10)) }
 
     var body: some View {
         NavigationStack {
             ScrollView(showsIndicators: false) {
                 VStack(alignment: .leading, spacing: VolnaLayout.sectionSpacing) {
                     header
-                        .padding(.top, 8)
+                        .padding(.top, 4)
 
-                    if appState.isHomeLoading && appState.homeSections.isEmpty {
+                    if let hero = appState.homeSections.first {
+                        heroCard(section: hero)
+                    }
+
+                    if !historyTracks.isEmpty {
+                        recentlyPlayedSection
+                    }
+
+                    if !recentPlaylists.isEmpty {
+                        playlistsSection
+                    }
+
+                    if !favoriteTracks.isEmpty {
+                        favoritesSection
+                    }
+
+                    if appState.isHomeLoading && appState.homeSections.isEmpty && historyTracks.isEmpty && favoriteTracks.isEmpty {
                         loadingState
-                    } else if let error = appState.homeError, appState.homeSections.isEmpty {
+                    } else if let error = appState.homeError, appState.homeSections.isEmpty && historyTracks.isEmpty {
                         ErrorBanner(message: error) {
                             Task { await appState.loadHome(force: true) }
                         }
-                    } else {
-                        if let hero = appState.homeSections.first {
-                            heroCard(section: hero)
-                        }
+                    }
 
-                        ForEach(appState.homeSections.dropFirst()) { section in
-                            shelf(section: section)
-                        }
+                    ForEach(appState.homeSections.dropFirst()) { section in
+                        discoveryShelf(section: section)
                     }
 
                     sourcesFooter
@@ -36,15 +53,10 @@ struct HomeView: View {
             .refreshable {
                 await appState.loadHome(force: true)
             }
-            .navigationDestination(for: Artist.self) { artist in
-                ArtistView(artist: artist)
-            }
-            .navigationDestination(for: Album.self) { album in
-                AlbumView(album: album)
-            }
-            .navigationDestination(for: Playlist.self) { playlist in
-                PlaylistDetailView(playlistID: playlist.id)
-            }
+            .navigationDestination(for: Artist.self) { ArtistView(artist: $0) }
+            .navigationDestination(for: Album.self) { AlbumView(album: $0) }
+            .navigationDestination(for: Playlist.self) { PlaylistDetailView(playlistID: $0.id) }
+            .navigationDestination(isPresented: $showSettings) { SettingsView() }
             .task {
                 await appState.loadHome()
             }
@@ -54,39 +66,38 @@ struct HomeView: View {
     // MARK: - Header
 
     private var header: some View {
-        VStack(alignment: .leading, spacing: 16) {
+        VStack(alignment: .leading, spacing: 12) {
             HStack(alignment: .center) {
-                VStack(alignment: .leading, spacing: 4) {
-                    Text(greeting)
-                        .font(.system(size: 15, weight: .medium, design: .default))
-                        .foregroundStyle(Color.volnaTextSecondary)
-                    Text("VOLNA")
-                        .font(.system(size: 32, weight: .bold, design: .default))
-                        .foregroundStyle(Color.volnaTextPrimary)
-                }
+                Text("VOLNA")
+                    .font(VolnaFont.custom(20, weight: .semibold, relativeTo: .headline))
+                    .foregroundStyle(Color.volnaTextSecondary)
+                    .tracking(0.5)
+
                 Spacer()
-                Button {
-                    appState.selectedTab = .search
-                } label: {
-                    Image(systemName: "magnifyingglass")
+
+                HStack(spacing: 8) {
+                    Button {
+                        appState.selectedTab = .search
+                    } label: {
+                        Image(systemName: "magnifyingglass")
+                    }
+                    .buttonStyle(VolnaIconButtonStyle(size: 40))
+                    .accessibilityLabel("Поиск")
+
+                    Button {
+                        showSettings = true
+                    } label: {
+                        Image(systemName: "gearshape")
+                    }
+                    .buttonStyle(VolnaIconButtonStyle(size: 40))
+                    .accessibilityLabel("Настройки")
                 }
-                .buttonStyle(VolnaIconButtonStyle())
-                .accessibilityLabel("Поиск")
             }
 
-            Text("Музыка из открытых источников")
-                .font(.system(size: 17, weight: .regular, design: .default))
-                .foregroundStyle(Color.volnaTextSecondary)
-        }
-    }
-
-    private var greeting: String {
-        let hour = Calendar.current.component(.hour, from: Date())
-        switch hour {
-        case 5..<12: return "Доброе утро"
-        case 12..<18: return "Добрый день"
-        case 18..<23: return "Добрый вечер"
-        default: return "Доброй ночи"
+            Text("Что послушать")
+                .font(VolnaFont.custom(32, weight: .bold, relativeTo: .largeTitle))
+                .foregroundStyle(Color.volnaTextPrimary)
+                .lineLimit(2)
         }
     }
 
@@ -98,7 +109,6 @@ struct HomeView: View {
             appState.play(first, in: section.tracks)
         } label: {
             ZStack(alignment: .bottomLeading) {
-                // Background gradient
                 RoundedRectangle(cornerRadius: 28, style: .continuous)
                     .fill(
                         LinearGradient(
@@ -108,97 +118,126 @@ struct HomeView: View {
                         )
                     )
 
-                // Decorative circles
                 Circle()
-                    .fill(.white.opacity(0.12))
-                    .frame(width: 200, height: 200)
-                    .blur(radius: 20)
-                    .offset(x: 180, y: -60)
-
-                Circle()
-                    .fill(.black.opacity(0.1))
-                    .frame(width: 120, height: 120)
+                    .fill(.white.opacity(0.10))
+                    .frame(width: 220, height: 220)
                     .blur(radius: 30)
-                    .offset(x: -20, y: 80)
+                    .offset(x: 160, y: -40)
 
                 HStack(alignment: .bottom, spacing: 16) {
                     VStack(alignment: .leading, spacing: 10) {
-                        Text("ПОДБОРКА")
-                            .font(.system(size: 11, weight: .bold, design: .default))
-                            .tracking(1.2)
-                            .foregroundStyle(.white.opacity(0.75))
+                        Text("Подборка дня")
+                            .font(VolnaFont.custom(12, weight: .semibold, relativeTo: .caption))
+                            .foregroundStyle(.white.opacity(0.8))
 
                         Text(section.title)
-                            .font(.system(size: 26, weight: .bold, design: .default))
+                            .font(VolnaFont.custom(24, weight: .bold, relativeTo: .title2))
                             .foregroundStyle(.white)
                             .lineLimit(2)
                             .multilineTextAlignment(.leading)
 
                         Text(section.subtitle)
-                            .font(.system(size: 14, weight: .medium, design: .default))
+                            .font(VolnaFont.custom(14, weight: .regular, relativeTo: .subheadline))
                             .foregroundStyle(.white.opacity(0.85))
                             .lineLimit(2)
 
-                        HStack(spacing: 10) {
-                            HStack(spacing: 6) {
-                                Image(systemName: "play.fill")
-                                    .font(.system(size: 11, weight: .bold))
-                                Text("Слушать")
-                                    .font(.system(size: 14, weight: .semibold, design: .default))
-                            }
-                            .foregroundStyle(Color(hex: "1A1030"))
-                            .padding(.horizontal, 16)
-                            .padding(.vertical, 10)
-                            .background(.white, in: Capsule())
-
-                            Text("\(section.tracks.count) треков")
-                                .font(.system(size: 13, weight: .medium, design: .default))
-                                .foregroundStyle(.white.opacity(0.8))
+                        HStack(spacing: 8) {
+                            Image(systemName: "play.fill")
+                                .font(.system(size: 12, weight: .bold))
+                            Text("Слушать")
+                                .font(VolnaFont.custom(14, weight: .semibold, relativeTo: .subheadline))
                         }
+                        .foregroundStyle(Color(hex: "151515"))
+                        .padding(.horizontal, 18)
+                        .padding(.vertical, 11)
+                        .background(.white, in: Capsule())
                         .padding(.top, 4)
                     }
                     .frame(maxWidth: .infinity, alignment: .leading)
 
                     if let artwork = section.tracks.first?.artworkURL {
-                        ArtworkView(url: artwork, size: 110, cornerRadius: 16)
-                            .rotationEffect(.degrees(6))
-                            .shadow(color: .black.opacity(0.3), radius: 16, y: 8)
+                        ArtworkView(url: artwork, size: 116, cornerRadius: 18)
+                            .shadow(color: .black.opacity(0.3), radius: 18, y: 10)
+                            .rotationEffect(.degrees(4))
                     }
                 }
-                .padding(20)
+                .padding(22)
             }
-            .frame(minHeight: 210)
+            .frame(minHeight: 220)
             .clipShape(RoundedRectangle(cornerRadius: 28, style: .continuous))
             .overlay {
                 RoundedRectangle(cornerRadius: 28, style: .continuous)
-                    .stroke(.white.opacity(0.15), lineWidth: 1)
+                    .stroke(.white.opacity(0.12), lineWidth: 1)
             }
-            .shadow(color: (section.colors.first ?? .volnaPurple).opacity(0.35), radius: 24, y: 12)
         }
         .buttonStyle(.plain)
     }
 
-    // MARK: - Shelves
+    // MARK: - Library sections
 
-    private func shelf(section: HomeSection) -> some View {
+    private var recentlyPlayedSection: some View {
         VStack(alignment: .leading, spacing: 14) {
-            SectionHeader(
-                title: section.title,
-                subtitle: section.subtitle,
-                actionTitle: section.tracks.isEmpty ? nil : "Играть"
-            ) {
-                guard let first = section.tracks.first else { return }
-                appState.play(first, in: section.tracks)
+            SectionHeader(title: "Недавно слушали", actionTitle: "Все") {
+                appState.selectedTab = .library
             }
+            ScrollView(.horizontal, showsIndicators: false) {
+                LazyHStack(alignment: .top, spacing: 14) {
+                    ForEach(historyTracks) { track in
+                        TrackCard(track: track, queue: historyTracks, width: 156)
+                    }
+                }
+                .padding(.vertical, 2)
+            }
+            .scrollClipDisabled()
+        }
+    }
 
+    private var playlistsSection: some View {
+        VStack(alignment: .leading, spacing: 14) {
+            SectionHeader(title: "Твои плейлисты", actionTitle: "Все") {
+                appState.selectedTab = .library
+            }
+            ScrollView(.horizontal, showsIndicators: false) {
+                LazyHStack(alignment: .top, spacing: 14) {
+                    ForEach(recentPlaylists) { playlist in
+                        PlaylistCard(playlist: playlist, width: 156)
+                    }
+                }
+                .padding(.vertical, 2)
+            }
+            .scrollClipDisabled()
+        }
+    }
+
+    private var favoritesSection: some View {
+        VStack(alignment: .leading, spacing: 14) {
+            SectionHeader(title: "Избранные треки", actionTitle: "Все") {
+                appState.selectedTab = .library
+            }
+            ScrollView(.horizontal, showsIndicators: false) {
+                LazyHStack(alignment: .top, spacing: 14) {
+                    ForEach(favoriteTracks) { track in
+                        TrackCard(track: track, queue: favoriteTracks, width: 156)
+                    }
+                }
+                .padding(.vertical, 2)
+            }
+            .scrollClipDisabled()
+        }
+    }
+
+    // MARK: - Discovery shelves
+
+    private func discoveryShelf(section: HomeSection) -> some View {
+        VStack(alignment: .leading, spacing: 14) {
+            SectionHeader(title: section.title, subtitle: section.subtitle)
             ScrollView(.horizontal, showsIndicators: false) {
                 LazyHStack(alignment: .top, spacing: 14) {
                     ForEach(section.tracks) { track in
-                        TrackCard(track: track, queue: section.tracks, width: 160)
+                        TrackCard(track: track, queue: section.tracks, width: 156)
                     }
                 }
-                .padding(.vertical, 4)
-                .padding(.horizontal, 1)
+                .padding(.vertical, 2)
             }
             .scrollClipDisabled()
         }
@@ -208,29 +247,15 @@ struct HomeView: View {
 
     private var loadingState: some View {
         VStack(alignment: .leading, spacing: 20) {
-            HStack(spacing: 12) {
-                ProgressView()
-                    .tint(Color.volnaPurple)
-                Text("Загружаем подборки…")
-                    .font(.system(size: 15, weight: .regular, design: .default))
-                    .foregroundStyle(Color.volnaTextSecondary)
-            }
-            .padding(.vertical, 8)
-
             RoundedRectangle(cornerRadius: 28, style: .continuous)
                 .fill(Color.volnaSurface)
-                .frame(height: 210)
-
+                .frame(height: 220)
             ForEach(0..<2, id: \.self) { _ in
                 VStack(alignment: .leading, spacing: 12) {
-                    RoundedRectangle(cornerRadius: 8, style: .continuous)
-                        .fill(Color.volnaSurfaceSecondary)
-                        .frame(width: 180, height: 20)
+                    RoundedRectangle(cornerRadius: 6).fill(Color.volnaSurfaceSecondary).frame(width: 160, height: 18)
                     HStack(spacing: 14) {
                         ForEach(0..<3, id: \.self) { _ in
-                            RoundedRectangle(cornerRadius: 16, style: .continuous)
-                                .fill(Color.volnaSurfaceSecondary)
-                                .frame(width: 140, height: 180)
+                            RoundedRectangle(cornerRadius: 16).fill(Color.volnaSurfaceSecondary).frame(width: 140, height: 190)
                         }
                     }
                 }
@@ -240,32 +265,22 @@ struct HomeView: View {
     }
 
     private var sourcesFooter: some View {
-        VStack(alignment: .leading, spacing: 12) {
+        VStack(alignment: .leading, spacing: 10) {
             HStack {
                 Text("Открытая музыка")
-                    .font(.system(size: 18, weight: .semibold, design: .default))
+                    .font(VolnaFont.custom(17, weight: .semibold, relativeTo: .headline))
                     .foregroundStyle(Color.volnaTextPrimary)
                 Spacer()
-                NavigationLink {
-                    SourcesView()
-                } label: {
+                NavigationLink { SourcesView() } label: {
                     Text("Источники")
-                        .font(.system(size: 14, weight: .semibold, design: .default))
+                        .font(VolnaFont.custom(14, weight: .semibold, relativeTo: .subheadline))
                         .foregroundStyle(Color.volnaPurple)
                 }
             }
-
             Text("VOLNA воспроизводит записи из открытых каталогов. Лицензия указывается для каждой композиции отдельно.")
-                .font(.system(size: 13, weight: .regular, design: .default))
+                .font(VolnaFont.custom(13, weight: .regular, relativeTo: .footnote))
                 .foregroundStyle(Color.volnaTextTertiary)
                 .lineSpacing(3)
-                .fixedSize(horizontal: false, vertical: true)
-
-            HStack(spacing: 8) {
-                ForEach(["jamendo", "internet_archive", "wikimedia_commons"], id: \.self) { id in
-                    ProviderBadge(providerID: id, compact: false)
-                }
-            }
         }
         .volnaCard(cornerRadius: 20, padding: 16)
     }

@@ -277,14 +277,12 @@ enum AppTab: String, CaseIterable, Hashable {
     case home
     case search
     case library
-    case settings
 
     var title: String {
         switch self {
         case .home: return "Главная"
         case .search: return "Поиск"
         case .library: return "Медиатека"
-        case .settings: return "Настройки"
         }
     }
 
@@ -293,7 +291,6 @@ enum AppTab: String, CaseIterable, Hashable {
         case .home: return "house"
         case .search: return "magnifyingglass"
         case .library: return "square.stack"
-        case .settings: return "gearshape"
         }
     }
 
@@ -302,7 +299,6 @@ enum AppTab: String, CaseIterable, Hashable {
         case .home: return "house.fill"
         case .search: return "magnifyingglass"
         case .library: return "square.stack.fill"
-        case .settings: return "gearshape.fill"
         }
     }
 }

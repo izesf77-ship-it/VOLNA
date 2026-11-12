@@ -30,19 +30,19 @@ struct MiniPlayerView: View {
                     HStack(spacing: 12) {
                         ArtworkView(
                             url: player.currentTrack?.artworkURL,
-                            size: 46,
+                            size: 48,
                             cornerRadius: 10,
                             showProgress: false
                         )
 
                         VStack(alignment: .leading, spacing: 2) {
                             Text(player.currentTrack?.title ?? "Не воспроизводится")
-                                .font(.system(size: 14, weight: .semibold, design: .default))
+                                .font(VolnaFont.custom(16, weight: .semibold, relativeTo: .headline))
                                 .foregroundStyle(Color.volnaTextPrimary)
                                 .lineLimit(1)
 
                             Text(player.currentTrack?.artist ?? "")
-                                .font(.system(size: 12, weight: .regular, design: .default))
+                                .font(VolnaFont.custom(14, weight: .regular, relativeTo: .subheadline))
                                 .foregroundStyle(Color.volnaTextSecondary)
                                 .lineLimit(1)
                         }
@@ -57,23 +57,26 @@ struct MiniPlayerView: View {
                         player.togglePlayPause()
                     } label: {
                         Image(systemName: player.isPlaying ? "pause.fill" : "play.fill")
+                            .font(.system(size: 22, weight: .semibold))
+                            .foregroundStyle(Color.volnaTextPrimary)
+                            .frame(width: 44, height: 44)
+                            .contentShape(Rectangle())
+                            .contentTransition(.symbolEffect(.replace))
+                    }
+                    .buttonStyle(.plain)
+                    .accessibilityLabel(player.isPlaying ? "Пауза" : "Воспроизвести")
+
+                    Button {
+                        player.next()
+                    } label: {
+                        Image(systemName: "forward.end.fill")
                             .font(.system(size: 20, weight: .semibold))
                             .foregroundStyle(Color.volnaTextPrimary)
                             .frame(width: 44, height: 44)
                             .contentShape(Rectangle())
                     }
                     .buttonStyle(.plain)
-
-                    Button {
-                        player.next()
-                    } label: {
-                        Image(systemName: "forward.fill")
-                            .font(.system(size: 18, weight: .semibold))
-                            .foregroundStyle(Color.volnaTextPrimary)
-                            .frame(width: 44, height: 44)
-                            .contentShape(Rectangle())
-                    }
-                    .buttonStyle(.plain)
+                    .accessibilityLabel("Следующий трек")
                 }
             }
             .padding(.horizontal, 12)

@@ -18,8 +18,6 @@ struct RootView: View {
                     SearchView()
                 case .library:
                     LibraryView()
-                case .settings:
-                    SettingsView()
                 }
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity)

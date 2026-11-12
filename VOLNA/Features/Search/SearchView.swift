@@ -7,6 +7,7 @@ struct SearchView: View {
     @State private var filters = SearchFilters.default
     @FocusState private var isFocused: Bool
     @State private var showIssues = false
+    @State private var showSettings = false
 
     private var service: SearchService { appState.searchService }
 
@@ -36,6 +37,7 @@ struct SearchView: View {
             .navigationDestination(for: Artist.self) { ArtistView(artist: $0) }
             .navigationDestination(for: Album.self) { AlbumView(album: $0) }
             .navigationDestination(for: Playlist.self) { PlaylistDetailView(playlistID: $0.id) }
+            .navigationDestination(isPresented: $showSettings) { SettingsView() }
             .task(id: searchKey) {
                 let trimmed = query.trimmingCharacters(in: .whitespacesAndNewlines)
                 guard !trimmed.isEmpty else {
@@ -67,11 +69,11 @@ struct SearchView: View {
                     .foregroundStyle(Color.volnaTextSecondary)
             }
             Spacer()
-            NavigationLink { SourcesView() } label: {
-                Image(systemName: "slider.horizontal.3")
+            Button { showSettings = true } label: {
+                Image(systemName: "gearshape")
             }
             .buttonStyle(VolnaIconButtonStyle())
-            .accessibilityLabel("Источники")
+            .accessibilityLabel("Настройки")
         }
         .padding(.top, 4)
     }
@@ -386,7 +388,7 @@ struct SearchView: View {
             actionTitle: filters.language == "ru" ? "Искать на всех языках" : "Открыть источники",
             action: {
                 if filters.language == "ru" { filters.language = nil }
-                else { appState.selectedTab = .settings }
+                else { showSettings = true }
             }
         )
     }

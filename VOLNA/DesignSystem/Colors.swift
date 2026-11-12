@@ -159,43 +159,48 @@ struct VolnaBackground: View {
     }
 }
 
+enum VolnaFont {
+    /// Primary UI font: Onest (variable) with system fallback.
+    /// Dynamic Type supported via relativeTo.
+    static func custom(_ size: CGFloat, weight: Font.Weight = .regular, relativeTo textStyle: Font.TextStyle = .body) -> Font {
+        // "Onest" is the family name for the variable font; fallback to system if unavailable.
+        if UIFont(name: "Onest-Regular", size: size) != nil || UIFont.familyNames.contains(where: { $0.localizedCaseInsensitiveContains("Onest") }) {
+            return .custom("Onest", size: size, relativeTo: textStyle).weight(weight)
+        }
+        return .system(size: size, weight: weight, design: .default)
+    }
+
+    // Recommended scale
+    static let heroTitle = custom(34, weight: .bold, relativeTo: .largeTitle)
+    static let screenTitle = custom(30, weight: .bold, relativeTo: .title)
+    static let sectionTitle = custom(22, weight: .semibold, relativeTo: .title2)
+    static let cardTitle = custom(17, weight: .semibold, relativeTo: .headline)
+    static let trackTitle = custom(16, weight: .medium, relativeTo: .headline)
+    static let artistTitle = custom(15, weight: .regular, relativeTo: .subheadline)
+    static let body = custom(16, weight: .regular, relativeTo: .body)
+    static let secondary = custom(14, weight: .regular, relativeTo: .subheadline)
+    static let caption = custom(13, weight: .medium, relativeTo: .caption)
+    static let tabLabel = custom(11, weight: .medium, relativeTo: .caption2)
+}
+
 extension Font {
-    // Display / Titles
-    static func volnaLargeTitle(_ size: CGFloat = 34) -> Font {
-        .system(size: size, weight: .bold, design: .default)
-    }
-    static func volnaTitle(_ size: CGFloat = 28) -> Font {
-        .system(size: size, weight: .bold, design: .default)
-    }
-    static func volnaTitle2(_ size: CGFloat = 22) -> Font {
-        .system(size: size, weight: .semibold, design: .default)
-    }
-    static func volnaTitle3(_ size: CGFloat = 20) -> Font {
-        .system(size: size, weight: .semibold, design: .default)
-    }
+    // Legacy/compat wrappers (kept for existing call sites)
+    static func volnaLargeTitle(_ size: CGFloat = 34) -> Font { VolnaFont.custom(size, weight: .bold, relativeTo: .largeTitle) }
+    static func volnaTitle(_ size: CGFloat = 28) -> Font { VolnaFont.custom(size, weight: .bold, relativeTo: .title) }
+    static func volnaTitle2(_ size: CGFloat = 22) -> Font { VolnaFont.custom(size, weight: .semibold, relativeTo: .title2) }
+    static func volnaTitle3(_ size: CGFloat = 20) -> Font { VolnaFont.custom(size, weight: .semibold, relativeTo: .title3) }
+    static func volnaDisplay(_ size: CGFloat) -> Font { VolnaFont.custom(size, weight: .bold, relativeTo: .title) }
+    static func volnaHeadline(_ size: CGFloat) -> Font { VolnaFont.custom(size, weight: .semibold, relativeTo: .headline) }
+    static func volnaBody(_ size: CGFloat) -> Font { VolnaFont.custom(size, weight: .regular, relativeTo: .body) }
 
-    // Legacy/compat
-    static func volnaDisplay(_ size: CGFloat) -> Font {
-        .system(size: size, weight: .bold, design: .default)
-    }
-    static func volnaHeadline(_ size: CGFloat) -> Font {
-        .system(size: size, weight: .semibold, design: .default)
-    }
-    static func volnaBody(_ size: CGFloat) -> Font {
-        .system(size: size, weight: .regular, design: .default)
-    }
-
-    // Body
-    static let volnaBodyLarge = Font.system(size: 17, weight: .regular, design: .default)
-    static let volnaBodyMedium = Font.system(size: 15, weight: .regular, design: .default)
-    static let volnaBodySmall = Font.system(size: 13, weight: .regular, design: .default)
-
-    // Labels / UI
-    static let volnaLabel = Font.system(size: 15, weight: .medium, design: .default)
-    static let volnaLabelBold = Font.system(size: 15, weight: .semibold, design: .default)
-    static let volnaCaption = Font.system(size: 12, weight: .medium, design: .default)
-    static let volnaCaptionSmall = Font.system(size: 11, weight: .medium, design: .default)
-    static let volnaMicro = Font.system(size: 10, weight: .medium, design: .default)
+    static let volnaBodyLarge = VolnaFont.custom(17, weight: .regular, relativeTo: .body)
+    static let volnaBodyMedium = VolnaFont.custom(15, weight: .regular, relativeTo: .subheadline)
+    static let volnaBodySmall = VolnaFont.custom(13, weight: .regular, relativeTo: .footnote)
+    static let volnaLabel = VolnaFont.custom(15, weight: .medium, relativeTo: .subheadline)
+    static let volnaLabelBold = VolnaFont.custom(15, weight: .semibold, relativeTo: .subheadline)
+    static let volnaCaption = VolnaFont.custom(12, weight: .medium, relativeTo: .caption)
+    static let volnaCaptionSmall = VolnaFont.custom(11, weight: .medium, relativeTo: .caption2)
+    static let volnaMicro = VolnaFont.custom(10, weight: .medium, relativeTo: .caption2)
 }
 
 // MARK: - Card style
