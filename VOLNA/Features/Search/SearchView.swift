@@ -8,7 +8,6 @@ struct SearchView: View {
     @State private var filters = SearchFilters.default
     @FocusState private var isFocused: Bool
     @State private var showIssues = false
-    @State private var showSettings = false
 
     private var service: SearchService { appState.searchService }
     private var trimmedQuery: String {
@@ -46,9 +45,14 @@ struct SearchView: View {
             .navigationDestination(for: Artist.self) { ArtistView(artist: $0) }
             .navigationDestination(for: Album.self) { AlbumView(album: $0) }
             .navigationDestination(for: Playlist.self) { PlaylistDetailView(playlistID: $0.id) }
-            .navigationDestination(isPresented: $showSettings) { SettingsView() }
+            .navigationDestination(isPresented: $appState.showSettings) { SettingsView() }
             .task {
                 await appState.catalog.loadIfNeeded()
+            }
+            .task {
+                guard ProcessInfo.processInfo.arguments.contains("-uiScreenshotKeyboard") else { return }
+                try? await Task.sleep(nanoseconds: 500_000_000)
+                isFocused = true
             }
             .task(id: searchKey) {
                 guard !trimmedQuery.isEmpty else {
@@ -81,7 +85,7 @@ struct SearchView: View {
                     .lineLimit(2)
             }
             Spacer(minLength: 8)
-            Button { showSettings = true } label: {
+            Button { appState.showSettings = true } label: {
                 Image(systemName: "gearshape")
             }
             .buttonStyle(VolnaIconButtonStyle(size: 40))
@@ -641,7 +645,7 @@ struct SearchView: View {
             actionTitle: filters.language == "ru" ? "Искать на всех языках" : "Открыть источники",
             action: {
                 if filters.language == "ru" { filters.language = nil }
-                else { showSettings = true }
+                else { appState.showSettings = true }
             }
         )
     }

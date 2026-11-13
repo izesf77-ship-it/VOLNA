@@ -17,6 +17,10 @@ jobs:
     runs-on: macos-latest
     timeout-minutes: 40
 
+    env:
+      BUILD_SHA: ${{ github.sha }}
+      BUILD_NUMBER: ${{ github.run_id }}
+
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -45,13 +49,26 @@ jobs:
             CODE_SIGNING_ALLOWED=NO \
             CODE_SIGNING_REQUIRED=NO \
             CODE_SIGN_IDENTITY="" \
+            MARKETING_VERSION=1.0.0 \
+            CURRENT_PROJECT_VERSION="$BUILD_NUMBER" \
+            BUILD_SHA="$BUILD_SHA" \
             build
+
+      - name: Verify build identity
+        run: |
+          set -euo pipefail
+          APP_PATH="$(find build/DerivedData/Build/Products/Debug-iphonesimulator -maxdepth 1 -name 'VOLNA.app' -print -quit)"
+          test -n "$APP_PATH"
+          echo "Bundle ID: $(/usr/libexec/PlistBuddy -c 'Print :CFBundleIdentifier' "$APP_PATH/Info.plist")"
+          echo "Version: $(/usr/libexec/PlistBuddy -c 'Print :CFBundleShortVersionString' "$APP_PATH/Info.plist")"
+          echo "Build: $(/usr/libexec/PlistBuddy -c 'Print :CFBundleVersion' "$APP_PATH/Info.plist")"
+          echo "Git SHA: $(/usr/libexec/PlistBuddy -c 'Print :CFBundleBuildSHA' "$APP_PATH/Info.plist")"
 
       - name: Select available iPhone simulator
         id: simulator
         run: |
           set -euo pipefail
-          for name in "iPhone 16 Pro" "iPhone 16" "iPhone 15 Pro" "iPhone 15" "iPhone 14 Pro" "iPhone 14"; do
+          for name in "iPhone 15 Pro" "iPhone 15" "iPhone 16 Pro" "iPhone 16" "iPhone 14 Pro" "iPhone 14"; do
             if xcrun simctl list devices available | grep -Fq "$name ("; then
               echo "name=$name" >> "$GITHUB_OUTPUT"
               echo "Selected simulator: $name"
@@ -83,6 +100,9 @@ jobs:
             CODE_SIGNING_ALLOWED=NO \
             CODE_SIGNING_REQUIRED=NO \
             CODE_SIGN_IDENTITY="" \
+            MARKETING_VERSION=1.0.0 \
+            CURRENT_PROJECT_VERSION="$BUILD_NUMBER" \
+            BUILD_SHA="$BUILD_SHA" \
             test
 
       - name: Capture simulator screenshots
@@ -128,10 +148,14 @@ jobs:
             xcrun simctl io "$SIM_NAME" screenshot "artifacts/screenshots/$output"
           }
 
-          capture home.ready 01-home.png -uiScreenshotTab home
-          capture search.ready 02-search.png -uiScreenshotTab search
-          capture library.ready 03-library.png -uiScreenshotTab library
-          capture player.ready 04-player.png -uiScreenshotPlayer
+          capture home-empty.ready 01-home-empty.png -uiScreenshotTab home
+          capture home-playing.ready 02-home-playing.png -uiScreenshotMiniPlayer
+          capture search.ready 03-search.png -uiScreenshotTab search
+          capture library.ready 04-library.png -uiScreenshotTab library
+          capture player.ready 05-player.png -uiScreenshotPlayer
+          capture search-keyboard.ready 06-search-keyboard.png -uiScreenshotTab search -uiScreenshotKeyboard
+          capture home-scroll.ready 07-home-scroll.png -uiScreenshotTab home -uiScreenshotScroll
+          capture build-info.ready 08-build-info.png -uiScreenshotTab home -uiScreenshotSettings
 
           ls -lh artifacts/screenshots
 
@@ -139,7 +163,7 @@ jobs:
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: simulator-screenshots
+          name: simulator-screenshots-${{ github.sha }}
           path: artifacts/screenshots
           if-no-files-found: warn
           retention-days: 14

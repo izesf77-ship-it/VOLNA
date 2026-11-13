@@ -100,19 +100,43 @@ struct RootView: View {
         }
 
         let wantsPlayer = arguments.contains("-uiScreenshotPlayer")
+        let wantsMiniPlayer = arguments.contains("-uiScreenshotMiniPlayer")
+        let wantsSettings = arguments.contains("-uiScreenshotSettings")
+        let wantsScroll = arguments.contains("-uiScreenshotScroll")
+        let wantsKeyboard = arguments.contains("-uiScreenshotKeyboard")
         guard wantsPlayer
+            || wantsMiniPlayer
+            || wantsSettings
+            || wantsScroll
+            || wantsKeyboard
             || arguments.contains("-uiScreenshotTab")
             || arguments.contains("-uiScreenshotReadyFile") else {
             return
         }
 
-        await waitForCatalog(timeout: wantsPlayer ? 90 : 60)
+        await waitForCatalog(timeout: (wantsPlayer || wantsMiniPlayer) ? 90 : 60)
 
-        if wantsPlayer, let track = appState.catalog.tracks.first {
+        if wantsPlayer || wantsMiniPlayer, let track = appState.catalog.tracks.first {
             appState.play(track, in: Array(appState.catalog.tracks.prefix(20)))
-            try? await Task.sleep(nanoseconds: 700_000_000)
-            appState.isPlayerPresented = true
             try? await Task.sleep(nanoseconds: 900_000_000)
+            if wantsPlayer {
+                appState.isPlayerPresented = true
+                try? await Task.sleep(nanoseconds: 900_000_000)
+            }
+        }
+
+        if wantsSettings {
+            appState.showSettings = true
+            try? await Task.sleep(nanoseconds: 800_000_000)
+        }
+
+        if wantsScroll {
+            appState.screenshotScrollToken += 1
+            try? await Task.sleep(nanoseconds: 1_200_000_000)
+        }
+
+        if wantsKeyboard {
+            try? await Task.sleep(nanoseconds: 700_000_000)
         }
 
         if let index = arguments.firstIndex(of: "-uiScreenshotReadyFile"),

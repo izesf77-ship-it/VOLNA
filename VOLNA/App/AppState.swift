@@ -24,6 +24,12 @@ final class AppState {
     /// Используется для safe-area inset контента без магических констант.
     var bottomControlsHeight: CGFloat = 0
 
+    /// Единая точка презентации настроек (используется всеми тремя вкладками).
+    var showSettings = false
+
+    /// Токен для debug-скриншота «Главная с прокруткой».
+    var screenshotScrollToken = 0
+
     // Home feed
     private(set) var homeSections: [HomeSection] = []
     private(set) var isHomeLoading = false
@@ -214,6 +220,18 @@ final class AppState {
         let version = Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "1.0.0"
         let build = Bundle.main.infoDictionary?["CFBundleVersion"] as? String ?? "1"
         return "\(version) (\(build))"
+    }
+
+    var buildNumber: String {
+        Bundle.main.infoDictionary?["CFBundleVersion"] as? String ?? "1"
+    }
+
+    var buildSHA: String {
+        Bundle.main.infoDictionary?["CFBundleBuildSHA"] as? String ?? "local"
+    }
+
+    var shortBuildSHA: String {
+        String(buildSHA.prefix(7))
     }
 }
 

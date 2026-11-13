@@ -4,7 +4,6 @@ struct LibraryView: View {
     @Environment(AppState.self) private var appState
     @State private var showCreatePlaylist = false
     @State private var newPlaylistTitle = ""
-    @State private var showSettings = false
 
     var body: some View {
         NavigationStack {
@@ -26,7 +25,7 @@ struct LibraryView: View {
             .navigationDestination(for: Playlist.self) { playlist in
                 PlaylistDetailView(playlistID: playlist.id)
             }
-            .navigationDestination(isPresented: $showSettings) { SettingsView() }
+            .navigationDestination(isPresented: $appState.showSettings) { SettingsView() }
             .alert("Новый плейлист", isPresented: $showCreatePlaylist) {
                 TextField("Название", text: $newPlaylistTitle)
                 Button("Создать") {
@@ -63,7 +62,7 @@ struct LibraryView: View {
                 .buttonStyle(VolnaIconButtonStyle(size: 40))
                 .accessibilityLabel("Создать плейлист")
 
-                Button { showSettings = true } label: {
+                Button { appState.showSettings = true } label: {
                     Image(systemName: "gearshape")
                 }
                 .buttonStyle(VolnaIconButtonStyle(size: 40))

@@ -11,12 +11,12 @@ struct SettingsView: View {
         ScrollView(showsIndicators: false) {
             VStack(alignment: .leading, spacing: 24) {
                 header
+                aboutCard
                 catalogCard
                 sourcesCard
                 behaviorCard
                 directLinksCard
                 dataCard
-                aboutCard
                 footer
             }
             .padding(.horizontal, VolnaLayout.horizontalPadding)
@@ -340,6 +340,24 @@ struct SettingsView: View {
                 icon: "info.circle",
                 title: "Версия",
                 value: appState.appVersion,
+                tint: .volnaTextSecondary
+            )
+
+            Divider().overlay(Color.white.opacity(0.05)).padding(.leading, 44)
+
+            SettingsValueRow(
+                icon: "number",
+                title: "Сборка",
+                value: appState.buildNumber,
+                tint: .volnaTextSecondary
+            )
+
+            Divider().overlay(Color.white.opacity(0.05)).padding(.leading, 44)
+
+            SettingsValueRow(
+                icon: "arrow.triangle.branch",
+                title: "Git SHA",
+                value: appState.shortBuildSHA,
                 tint: .volnaTextSecondary
             )
         }

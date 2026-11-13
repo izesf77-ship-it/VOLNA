@@ -2,7 +2,6 @@ import SwiftUI
 
 struct HomeView: View {
     @Environment(AppState.self) private var appState
-    @State private var showSettings = false
 
     private var catalog: CatalogService { appState.catalog }
     private var historyTracks: [Track] { Array(appState.library.history.prefix(10)) }
@@ -20,6 +19,7 @@ struct HomeView: View {
 
     var body: some View {
         NavigationStack {
+            ScrollViewReader { proxy in
             ScrollView(showsIndicators: false) {
                 VStack(alignment: .leading, spacing: VolnaLayout.sectionSpacing) {
                     header
@@ -67,6 +67,7 @@ struct HomeView: View {
 
                         sourcesFooter
                     }
+                    Color.clear.frame(height: 0).id("home-bottom")
                 }
                 .padding(.horizontal, VolnaLayout.horizontalPadding)
                 .padding(.bottom, 20)
@@ -79,7 +80,15 @@ struct HomeView: View {
             .navigationDestination(for: Artist.self) { ArtistView(artist: $0) }
             .navigationDestination(for: Album.self) { AlbumView(album: $0) }
             .navigationDestination(for: Playlist.self) { PlaylistDetailView(playlistID: $0.id) }
-            .navigationDestination(isPresented: $showSettings) { SettingsView() }
+            .navigationDestination(isPresented: $appState.showSettings) { SettingsView() }
+            .task(id: appState.screenshotScrollToken) {
+                guard appState.screenshotScrollToken > 0, !appState.catalog.isEmpty else { return }
+                try? await Task.sleep(nanoseconds: 400_000_000)
+                withAnimation(.easeInOut(duration: 0.4)) {
+                    proxy.scrollTo("home-bottom", anchor: .bottom)
+                }
+            }
+            }
         }
     }
 
@@ -105,7 +114,7 @@ struct HomeView: View {
                     .accessibilityLabel("Поиск")
 
                     Button {
-                        showSettings = true
+                        appState.showSettings = true
                     } label: {
                         Image(systemName: "gearshape")
                     }

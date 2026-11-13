@@ -108,14 +108,14 @@ enum VolnaLayout {
     static let miniPlayerHeight: CGFloat = 68
     static let floatingStackSpacing: CGFloat = 10
 
-    /// Estimated total height of floating bottom UI (mini-player + tab bar + spacing + safe padding)
+    /// Estimated total height of floating bottom UI (mini-player + tab bar + spacing + safe padding).
+    /// The floating stack adds 8 pt top padding and `tabBarBottomMargin` bottom padding.
     static var contentBottomInset: CGFloat {
-        // base: tab bar + margin; mini-player adds more when present but we reserve space safely
-        tabBarHeight + tabBarBottomMargin + 24
+        tabBarHeight + 16
     }
 
     static var contentBottomInsetWithPlayer: CGFloat {
-        miniPlayerHeight + floatingStackSpacing + tabBarHeight + tabBarBottomMargin + 24
+        miniPlayerHeight + floatingStackSpacing + tabBarHeight + 16
     }
 }
 
@@ -289,8 +289,10 @@ struct VolnaScreenModifier: ViewModifier {
     }
 
     private var bottomInset: CGFloat {
+        // `bottomControlsHeight` is measured from the real floating stack and already
+        // includes the mini-player, tab bar, spacing, and the stack's own padding.
         if appState.bottomControlsHeight > 0 {
-            return appState.bottomControlsHeight + VolnaLayout.floatingStackSpacing
+            return appState.bottomControlsHeight
         }
         return appState.player.currentTrack != nil
             ? VolnaLayout.contentBottomInsetWithPlayer
