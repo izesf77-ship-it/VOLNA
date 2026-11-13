@@ -28,10 +28,12 @@ enum CatalogQuality {
         "cover", "кавер", "tribute", "трибьют"
     ]
 
-    private static let unknownArtists: Set<String> = [
-        "unknown", "unknown artist", "неизвестный исполнитель",
-        "неизвестен", "various artists", "va", "разные исполнители"
-    ]
+    private static let unknownArtists: Set<String> = Set(
+        [
+            "unknown", "unknown artist", "неизвестный исполнитель",
+            "неизвестен", "various artists", "va", "разные исполнители"
+        ].map { normalized($0) }
+    )
 
     // MARK: - Text
 
