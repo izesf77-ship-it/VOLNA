@@ -20,6 +20,7 @@ struct SearchView: View {
     }
 
     var body: some View {
+        @Bindable var state = appState
         NavigationStack {
             ScrollView(showsIndicators: false) {
                 VStack(alignment: .leading, spacing: 20) {
@@ -45,7 +46,7 @@ struct SearchView: View {
             .navigationDestination(for: Artist.self) { ArtistView(artist: $0) }
             .navigationDestination(for: Album.self) { AlbumView(album: $0) }
             .navigationDestination(for: Playlist.self) { PlaylistDetailView(playlistID: $0.id) }
-            .navigationDestination(isPresented: $appState.showSettings) { SettingsView() }
+            .navigationDestination(isPresented: $state.showSettings) { SettingsView() }
             .task {
                 await appState.catalog.loadIfNeeded()
             }

@@ -6,6 +6,7 @@ struct LibraryView: View {
     @State private var newPlaylistTitle = ""
 
     var body: some View {
+        @Bindable var state = appState
         NavigationStack {
             ScrollView(showsIndicators: false) {
                 VStack(alignment: .leading, spacing: VolnaLayout.sectionSpacing) {
@@ -25,7 +26,7 @@ struct LibraryView: View {
             .navigationDestination(for: Playlist.self) { playlist in
                 PlaylistDetailView(playlistID: playlist.id)
             }
-            .navigationDestination(isPresented: $appState.showSettings) { SettingsView() }
+            .navigationDestination(isPresented: $state.showSettings) { SettingsView() }
             .alert("Новый плейлист", isPresented: $showCreatePlaylist) {
                 TextField("Название", text: $newPlaylistTitle)
                 Button("Создать") {
