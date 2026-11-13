@@ -282,7 +282,7 @@ actor JamendoProvider: MusicProvider {
         )
         let genre = data.musicinfo?.tags?.genres?.first(where: { !$0.isEmpty })
         let artistName = cleanText(data.artistName ?? "Неизвестный исполнитель")
-        let albumTitle = cleanText(albumName ?? data.albumName)
+        let albumTitle = (albumName ?? data.albumName).map { cleanText($0) }
         let artwork = urlOrNil(data.image ?? data.albumImage ?? artworkURL)
 
         let attribution = [
