@@ -278,15 +278,23 @@ final class PlayerService {
 
     // MARK: - Loading
 
+    private var streamAttemptIndex: Int = 0
+    private var isAdvancingAfterFailure = false
+
     private func loadCurrentTrack(autoplay: Bool) {
         guard let track = currentTrack else { return }
-        guard let stream = track.primaryStream else {
+        let streams = track.playableStreams
+        guard !streams.isEmpty else {
             playbackError = "У этой композиции нет потока, совместимого с AVPlayer"
             isPlaying = false
             isBuffering = false
             return
         }
+        streamAttemptIndex = 0
+        loadStream(streams[0], for: track, autoplay: autoplay)
+    }
 
+    private func loadStream(_ stream: StreamSource, for track: Track, autoplay: Bool) {
         do {
             try audioSession.setActive(true)
         } catch {
@@ -313,6 +321,15 @@ final class PlayerService {
         updateNowPlayingInfo()
         loadArtwork(for: track)
         saveState()
+    }
+
+    private func tryFallbackStream(for track: Track) -> Bool {
+        let streams = track.playableStreams
+        let nextIndex = streamAttemptIndex + 1
+        guard streams.indices.contains(nextIndex) else { return false }
+        streamAttemptIndex = nextIndex
+        loadStream(streams[nextIndex], for: track, autoplay: isPlaying || isBuffering)
+        return true
     }
 
     private func advance(by offset: Int) {
@@ -428,6 +445,9 @@ final class PlayerService {
                 guard let self else { return }
                 guard let item = notification.object as? AVPlayerItem,
                       item === self.player.currentItem else { return }
+                if let track = self.currentTrack, self.tryFallbackStream(for: track) {
+                    return
+                }
                 self.isPlaying = false
                 self.isBuffering = false
                 let message = (notification.userInfo?[AVPlayerItemFailedToPlayToEndTimeErrorKey] as? Error)?
@@ -447,9 +467,13 @@ final class PlayerService {
 
         if let item = player.currentItem {
             if item.status == .failed {
-                isPlaying = false
-                isBuffering = false
-                playbackError = item.error?.localizedDescription ?? "Не удалось загрузить аудиопоток"
+                if let track = currentTrack, tryFallbackStream(for: track) {
+                    // Switched to alternate stream/provider source.
+                } else {
+                    isPlaying = false
+                    isBuffering = false
+                    playbackError = item.error?.localizedDescription ?? "Не удалось загрузить аудиопоток"
+                }
             } else if item.status == .readyToPlay {
                 let itemDuration = item.duration.seconds
                 if itemDuration.isFinite, itemDuration > 0 {

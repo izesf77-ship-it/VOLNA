@@ -43,14 +43,22 @@ final class AppState {
         let directStore = DirectLinkStore()
         let directProvider = DirectMusicProvider(links: directStore.links)
         let jamendo = JamendoProvider()
-        let catalog = CatalogService(provider: jamendo)
+        let audius = AudiusProvider()
+        let internetArchive = InternetArchiveProvider()
+        let wikimedia = WikimediaCommonsProvider()
+        let openverse = OpenverseProvider()
         let registry = ProviderRegistry(providers: [
             jamendo,
-            InternetArchiveProvider(),
-            WikimediaCommonsProvider(),
-            OpenverseProvider(),
+            audius,
+            internetArchive,
+            wikimedia,
+            openverse,
             directProvider
         ])
+        let catalog = CatalogService(
+            providers: registry.allProviders,
+            enabledProviderIDs: { settings.enabledProviderIDs }
+        )
 
         self.settings = settings
         self.library = library

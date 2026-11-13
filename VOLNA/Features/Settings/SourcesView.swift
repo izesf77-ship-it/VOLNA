@@ -13,7 +13,7 @@ struct SourcesView: View {
     private let unintegrated: [UnintegratedSource] = [
         UnintegratedSource(
             name: "ccMixter",
-            reason: "Публичный JSON-поиск работает, но аудиофайлы отдают 403 без браузерного Referer. Обход этого ограничения недопустим, поэтому источник не добавлен."
+            reason: "Публичный JSON-поиск работает, но аудиофайлы отдают 403 без браузерного Referer. Обход этого ограничения недопустим."
         ),
         UnintegratedSource(
             name: "Free Music Archive",
@@ -24,40 +24,40 @@ struct SourcesView: View {
             reason: "Сайт и API защищены Cloudflare и не предоставляют стабильного публичного интерфейса для сторонних клиентов."
         ),
         UnintegratedSource(
-            name: "Audius",
-            reason: "Публичный API существует, но в текущей сети и на тестовых запросах возвращал блокировку Cloudflare. Интеграция не подтверждена и не выдаётся за рабочую."
-        ),
-        UnintegratedSource(
             name: "Muxiv",
-            reason: "Каталог заявляет тысячи бесплатных треков, но документированного публичного API нет, а robots.txt запрещает /api/. Автоматический доступ не используется."
+            reason: "Каталог заявляет бесплатные треки, но документированного публичного API нет, а robots.txt запрещает /api/."
         ),
         UnintegratedSource(
             name: "OpenGameArt",
-            reason: "Открытые аудио CC0/CC-BY есть, но официального API нет. Массовый парсинг HTML не реализован."
+            reason: "Открытые аудио CC0/CC-BY есть, но официального API нет. Массовый парсинг HTML не используется."
+        ),
+        UnintegratedSource(
+            name: "SayaMusicAPI / JioSaavn (unofficial)",
+            reason: "Проверенные маршруты дают в основном preview/метаданные или зависят от стороннего Worker/условий upstream. Не используется как источник полноценных защищённых стримов."
         ),
         UnintegratedSource(
             name: "Яндекс Музыка",
-            reason: "Нет публичного API, разрешающего сторонним плеерам полный стриминг. Закрытые методы требуют OAuth и договора с правообладателями, поэтому VOLNA их не использует и не обходит."
+            reason: "Нет публичного API, разрешающего сторонним плеерам полный стриминг. Закрытые методы требуют OAuth и договора с правообладателями."
         ),
         UnintegratedSource(
             name: "VK Музыка",
-            reason: "Публичный Audio API закрыт для новых сторонних клиентов. Полное воспроизведение требует лицензионного соглашения с VK и правообладателями; доступа к такому каталогу у VOLNA нет."
+            reason: "Публичный Audio API закрыт для новых сторонних клиентов. Полное воспроизведение требует лицензионного соглашения."
         ),
         UnintegratedSource(
             name: "Zaycev.net",
-            reason: "У сайта нет публичного API для сторонних плееров, а музыка лицензирована для его собственного сервиса. Hotlink и автоматический разбор страниц не используются."
+            reason: "У сайта нет публичного API для сторонних плееров, а музыка лицензирована для собственного сервиса."
         ),
         UnintegratedSource(
             name: "SoundCloud",
-            reason: "API требует регистрации приложения и разрешения авторов. Большая часть треков имеет all rights reserved; публичный stream endpoint не даёт права на стороннее распространение."
+            reason: "API требует регистрации приложения и разрешения авторов; большая часть треков all rights reserved."
         ),
         UnintegratedSource(
             name: "Deezer",
-            reason: "Публичный API отдаёт метаданные и 30-секундные превью. Полный поток доступен только партнёрам через Deezer SDK и авторизацию пользователя; свободного каталога для VOLNA там нет."
+            reason: "Публичный API отдаёт метаданные и 30-секундные preview; полный поток требует партнёрский/премиум-доступ."
         ),
         UnintegratedSource(
             name: "Apple Music / iTunes",
-            reason: "iTunes Search API даёт метаданные и 30-секундные превью, а Apple Music API требует MusicKit, developer token и подписку пользователя. Использовать его как бесплатный каталог нельзя."
+            reason: "iTunes Search даёт метаданные и preview, Apple Music требует MusicKit, developer token и подписку."
         )
     ]
 
@@ -375,6 +375,7 @@ struct SourcesView: View {
     private func icon(for id: String) -> String {
         switch id {
         case "jamendo": return "waveform"
+        case "audius": return "music.note.list"
         case "internet_archive": return "building.columns"
         case "wikimedia_commons": return "globe.europe.africa"
         case "openverse": return "circle.hexagongrid"
@@ -386,6 +387,7 @@ struct SourcesView: View {
     private func color(for id: String) -> Color {
         switch id {
         case "jamendo": return .volnaMint
+        case "audius": return .volnaPurple
         case "internet_archive": return .volnaBlue
         case "wikimedia_commons": return .volnaAmber
         case "openverse": return .volnaMagenta

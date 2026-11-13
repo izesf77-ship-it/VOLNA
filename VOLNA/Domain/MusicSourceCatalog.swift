@@ -28,6 +28,18 @@ enum MusicSourceCatalog {
             priority: 1.00
         ),
         MusicSourceInfo(
+            id: "audius",
+            name: "Audius",
+            shortName: "Audius",
+            description: "Открытая музыкальная платформа с публичным API и потоковым воспроизведением через discovery-провайдеры. Условия и доступность зависят от конкретного трека и автора.",
+            websiteURL: URL(string: "https://audius.co/"),
+            licenseSummary: "Лицензия/разрешение на стрим определяются на уровне трека; не все записи являются Creative Commons",
+            rateLimitNote: "Публичный API без ключа (app_name). Возможны сетевые ограничения, Cloudflare-блокировки и недоступность отдельных потоков.",
+            requiresKey: false,
+            supportsRussian: true,
+            priority: 0.95
+        ),
+        MusicSourceInfo(
             id: "internet_archive",
             name: "Internet Archive",
             shortName: "Archive",

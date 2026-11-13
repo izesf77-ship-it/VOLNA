@@ -133,8 +133,9 @@ enum CatalogQuality {
 
     // MARK: - Validation
 
-    /// Мягкий фильтр для поисковой выдачи: убирает явный мусор, но не требует
-    /// обложки и лицензии, чтобы не скрывать честно помеченные UNKNOWN записи.
+    /// Мягкий фильтр: запись имеет нормальные метаданные и не является явным мусором.
+    /// Не требует обложки, лицензии или воспроизводимого потока, чтобы можно было
+    /// честно показывать найденные записи и расширять каталог.
     static func isDisplayable(_ track: Track) -> Bool {
         guard !track.title.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
               !track.artist.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
@@ -142,28 +143,41 @@ enum CatalogQuality {
         }
         guard !isUnknownArtist(track.artist), !isNoise(track) else { return false }
         if let duration = track.duration, duration > 0 {
-            guard duration >= 20, duration <= 1_800 else { return false }
+            guard duration >= 20, duration <= 3_600 else { return false }
         }
         return true
     }
 
-    /// Строгий фильтр для редакционных подборок и кэша каталога.
-    static func isFeatured(_ track: Track) -> Bool {
+    /// Есть разрешённый полноценный воспроизводимый поток и валидные метаданные/длительность.
+    /// Preview/короткие/неразрешённые записи сюда не попадают.
+    static func isPlayableCatalogItem(_ track: Track) -> Bool {
         guard isDisplayable(track) else { return false }
         guard track.isStreamAllowed, !track.playableStreams.isEmpty else { return false }
+        guard let duration = track.duration, duration >= 60, duration <= 1_800 else { return false }
+        guard !isLikelyPreview(track) else { return false }
+        return true
+    }
+
+    /// Строгий фильтр для редакционных подборок главной.
+    static func isFeatured(_ track: Track) -> Bool {
+        guard isPlayableCatalogItem(track) else { return false }
         guard track.license.isKnownOpenLicense else { return false }
         guard track.artworkURL != nil else { return false }
-        guard let duration = track.duration, duration >= 60, duration <= 1_800 else {
-            return false
-        }
         guard let album = track.album, !album.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
             return false
         }
-        // Каверы и трибьюты остаются в поиске, но не выдаются за оригинальные
-        // редакционные релизы.
         guard !isCoverLike(title: track.title, album: track.album) else { return false }
-        // Обложка и альбом подтверждают, что это релиз, а не отдельный файл.
         return true
+    }
+
+    /// Эвристика preview/сэмпла: короткие записи или явно помеченные источники.
+    static func isLikelyPreview(_ track: Track) -> Bool {
+        if let duration = track.duration, duration > 0, duration < 60 { return true }
+        let title = track.title.lowercased()
+        if title.contains("preview") || title.contains("sample") || title.contains("snippet") {
+            return true
+        }
+        return false
     }
 
     static func isNoise(_ track: Track) -> Bool {

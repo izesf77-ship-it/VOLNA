@@ -324,17 +324,30 @@ enum SearchMerger {
     ) -> [Track] {
         guard !tracks.isEmpty else { return [] }
 
-        var groups: [String: [Track]] = [:]
+        var byISRC: [String: [Track]] = [:]
+        var byText: [String: [Track]] = [:]
+
         for track in tracks {
-            let key = dedupKey(for: track)
-            groups[key, default: []].append(track)
+            if let isrc = normalizedISRC(track.isrc) {
+                byISRC[isrc, default: []].append(track)
+            } else {
+                byText[dedupKey(for: track), default: []].append(track)
+            }
         }
 
         var merged: [Track] = []
         merged.reserveCapacity(tracks.count)
 
-        for group in groups.values {
-            for cluster in clusterByDuration(group) {
+        for group in byISRC.values {
+            for cluster in clusterByRecording(group, strictDuration: true) {
+                if let track = mergeCluster(cluster) {
+                    merged.append(track)
+                }
+            }
+        }
+
+        for group in byText.values {
+            for cluster in clusterByRecording(group, strictDuration: true) {
                 if let track = mergeCluster(cluster) {
                     merged.append(track)
                 }
@@ -385,6 +398,13 @@ enum SearchMerger {
 
     // MARK: - Dedup internals
 
+    private static func normalizedISRC(_ value: String?) -> String? {
+        guard let value else { return nil }
+        let cleaned = value.uppercased().filter { $0.isLetter || $0.isNumber }
+        guard cleaned.count >= 10 else { return nil }
+        return cleaned
+    }
+
     private static func dedupKey(for track: Track) -> String {
         let artist = RussianText.normalizedKey(track.artist)
         let title = RussianText.comparisonTitle(track.title)
@@ -394,7 +414,7 @@ enum SearchMerger {
         return "\(artist)|\(title)"
     }
 
-    private static func clusterByDuration(_ tracks: [Track]) -> [[Track]] {
+    private static func clusterByRecording(_ tracks: [Track], strictDuration: Bool) -> [[Track]] {
         guard tracks.count > 1 else { return [tracks] }
         var remaining = tracks
         var clusters: [[Track]] = []
@@ -404,7 +424,9 @@ enum SearchMerger {
             var cluster = [seed]
             var index = 0
             while index < remaining.count {
-                if compatibleDurations(seed.duration, remaining[index].duration) {
+                let candidate = remaining[index]
+                let sameVersionKind = CatalogQuality.isCoverLike(title: seed.title, album: seed.album) == CatalogQuality.isCoverLike(title: candidate.title, album: candidate.album)
+                if sameVersionKind && compatibleDurations(seed.duration, candidate.duration, strict: strictDuration) {
                     cluster.append(remaining.remove(at: index))
                 } else {
                     index += 1
@@ -415,13 +437,14 @@ enum SearchMerger {
         return clusters
     }
 
-    private static func compatibleDurations(_ lhs: TimeInterval?, _ rhs: TimeInterval?) -> Bool {
+    private static func compatibleDurations(_ lhs: TimeInterval?, _ rhs: TimeInterval?, strict: Bool = true) -> Bool {
         guard let lhs, let rhs, lhs > 0, rhs > 0 else {
             // Неизвестная длительность не должна склеивать явно разные версии,
             // но при отсутствии данных допускаем объединение.
             return lhs == nil || rhs == nil
         }
-        return abs(lhs - rhs) <= 12
+        let tolerance: TimeInterval = strict ? 12 : 25
+        return abs(lhs - rhs) <= tolerance
     }
 
     private static func mergeCluster(_ cluster: [Track]) -> Track? {
@@ -445,38 +468,41 @@ enum SearchMerger {
         let bestLicenseTrack = sorted.first { $0.license.isKnownOpenLicense }
         let bestGenre = sorted.compactMap(\.genre).first
         let bestLanguage = sorted.compactMap(\.language).first
+        let bestISRC = sorted.compactMap(\.isrc).first
         let isDownloadAllowed = sorted.contains { $0.isDownloadAllowed }
         let downloadURL = sorted.compactMap(\.downloadURL).first
         let sourcePageURL = sorted.compactMap(\.sourcePageURL).first
         let isStreamAllowed = sorted.contains { $0.isStreamAllowed }
+        let bestAlbumID = sorted.compactMap(\.albumID).first
+        let bestTrackNumber = sorted.compactMap(\.trackNumber).first
 
         return Track(
             id: primary.id,
             title: primary.title,
             artist: primary.artist,
-            album: primary.album,
+            album: primary.album ?? sorted.compactMap(\.album).first,
             artworkURL: primary.artworkURL ?? bestArtwork,
             duration: primary.duration ?? bestDuration,
             providerID: primary.providerID,
             sourceID: primary.sourceID,
-            isrc: sorted.compactMap(\.isrc).first,
+            isrc: bestISRC ?? primary.isrc,
             explicit: sorted.contains(where: \.explicit),
             availableStreams: streams,
-            language: bestLanguage,
-            originalTitle: primary.originalTitle,
-            transliteratedTitle: primary.transliteratedTitle,
+            language: bestLanguage ?? primary.language,
+            originalTitle: primary.originalTitle ?? sorted.compactMap(\.originalTitle).first,
+            transliteratedTitle: primary.transliteratedTitle ?? sorted.compactMap(\.transliteratedTitle).first,
             license: bestLicenseTrack?.license ?? primary.license,
             licenseURL: bestLicenseTrack?.licenseURL ?? primary.licenseURL,
-            attribution: primary.attribution ?? bestLicenseTrack?.attribution,
+            attribution: primary.attribution ?? bestLicenseTrack?.attribution ?? sorted.compactMap(\.attribution).first,
             isStreamAllowed: isStreamAllowed,
             isDownloadAllowed: isDownloadAllowed,
-            downloadURL: downloadURL,
-            sourcePageURL: sourcePageURL,
-            region: primary.region,
+            downloadURL: downloadURL ?? primary.downloadURL,
+            sourcePageURL: sourcePageURL ?? primary.sourcePageURL,
+            region: primary.region ?? sorted.compactMap(\.region).first,
             genre: primary.genre ?? bestGenre,
-            releaseDate: sorted.compactMap(\.releaseDate).max(),
-            trackNumber: primary.trackNumber,
-            albumID: primary.albumID
+            releaseDate: sorted.compactMap(\.releaseDate).max() ?? primary.releaseDate,
+            trackNumber: bestTrackNumber ?? primary.trackNumber,
+            albumID: bestAlbumID ?? primary.albumID
         )
     }
 

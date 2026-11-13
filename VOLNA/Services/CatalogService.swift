@@ -9,7 +9,7 @@ struct CatalogSection: Identifiable, Codable, Hashable, Sendable {
 }
 
 struct CatalogSnapshot: Codable, Sendable {
-    static let currentVersion = 2
+    static let currentVersion = 3
 
     var version: Int = CatalogSnapshot.currentVersion
     var generatedAt: Date = .distantPast
@@ -18,21 +18,13 @@ struct CatalogSnapshot: Codable, Sendable {
     var albums: [Album] = []
     var artists: [Artist] = []
 
-    var russianTrackCount: Int {
-        tracks.filter(\.isRussian).count
-    }
-
-    var isEmpty: Bool {
-        tracks.isEmpty
-    }
+    var russianTrackCount: Int { tracks.filter(\.isRussian).count }
+    var isEmpty: Bool { tracks.isEmpty }
 }
 
-/// Редакционный каталог VOLNA.
-///
-/// Источник — публичный Jamendo API. Сервис загружает несколько реальных
-/// выборок (новинки, популярное, русская музыка, жанры), проверяет каждый
-/// трек по единым правилам, убирает дубли и сохраняет снимок в JSON внутри
-/// Documents. Никаких придуманных исполнителей и треков здесь нет.
+/// Multi-source catalog service.
+/// Aggregates discovery from enabled providers, filters/merges tracks, builds
+/// editorial sections and caches the snapshot in Documents/VOLNA/catalog.json.
 @MainActor
 @Observable
 final class CatalogService {
@@ -40,17 +32,24 @@ final class CatalogService {
     private(set) var isLoading = false
     private(set) var error: String?
 
-    private let provider: JamendoProvider
+    private let providers: [any MusicProvider]
+    private let enabledProviderIDs: () -> Set<String>
     private let cacheURL: URL
 
-    init(provider: JamendoProvider) {
-        self.provider = provider
+    init(providers: [any MusicProvider], enabledProviderIDs: @escaping () -> Set<String>) {
+        self.providers = providers
+        self.enabledProviderIDs = enabledProviderIDs
         let documents = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask).first
             ?? URL(fileURLWithPath: NSTemporaryDirectory())
         self.cacheURL = documents
             .appendingPathComponent("VOLNA", isDirectory: true)
             .appendingPathComponent("catalog.json")
         self.snapshot = Self.loadSnapshot(from: cacheURL) ?? CatalogSnapshot()
+    }
+
+    // Convenience for existing call sites/tests that may pass Jamendo directly.
+    init(provider: JamendoProvider) {
+        self.init(providers: [provider], enabledProviderIDs: { ["jamendo"] })
     }
 
     // MARK: - Public state
@@ -60,61 +59,42 @@ final class CatalogService {
     var artists: [Artist] { snapshot.artists }
     var sections: [CatalogSection] { snapshot.sections }
     var russianTrackCount: Int { snapshot.russianTrackCount }
-    var lastUpdated: Date? {
-        snapshot.generatedAt == .distantPast ? nil : snapshot.generatedAt
-    }
+    var lastUpdated: Date? { snapshot.generatedAt == .distantPast ? nil : snapshot.generatedAt }
 
     var recentAlbums: [Album] {
         let calendar = Calendar(identifier: .gregorian)
         let currentYear = calendar.component(.year, from: Date())
-        let cutoff = calendar.date(from: DateComponents(year: currentYear - 2, month: 1, day: 1))
-            ?? .distantPast
+        let cutoff = calendar.date(from: DateComponents(year: currentYear - 2, month: 1, day: 1)) ?? .distantPast
         return albums.filter { ($0.releaseDate ?? .distantPast) >= cutoff }
     }
 
-    var newReleaseTracks: [Track] {
-        sections.first(where: { $0.id == "new" })?.tracks ?? []
-    }
-
-    var russianTracks: [Track] {
-        sections.first(where: { $0.id == "russian" })?.tracks ?? []
-    }
-
+    var newReleaseTracks: [Track] { sections.first(where: { $0.id == "new" })?.tracks ?? [] }
+    var russianTracks: [Track] { sections.first(where: { $0.id == "russian" })?.tracks ?? [] }
     var isEmpty: Bool { snapshot.isEmpty }
-
-    var countsText: String {
-        "\(tracks.count) треков · \(artists.count) исполнителей · \(albums.count) релизов"
-    }
+    var countsText: String { "\(tracks.count) треков · \(artists.count) исполнителей · \(albums.count) релизов" }
 
     // MARK: - Loading
 
     func loadIfNeeded() async {
         guard !isLoading else { return }
-        if !snapshot.isEmpty, !isStale {
-            return
-        }
+        if !snapshot.isEmpty, !isStale { return }
         await refresh(force: false)
     }
 
     func refresh(force: Bool) async {
         guard !isLoading else { return }
-        if !force, !snapshot.isEmpty, !isStale {
-            return
-        }
+        if !force, !snapshot.isEmpty, !isStale { return }
 
         isLoading = true
         error = nil
 
-        let queryResults = await fetchRawSections()
-        guard !Task.isCancelled else {
-            isLoading = false
-            return
-        }
-        let built = buildSnapshot(from: queryResults)
+        let discovered = await fetchDiscovery()
+        guard !Task.isCancelled else { isLoading = false; return }
+        let built = buildSnapshot(from: discovered)
 
         if built.tracks.isEmpty {
             if snapshot.isEmpty {
-                error = "Не удалось получить каталог Jamendo. Проверьте соединение и повторите попытку."
+                error = "Не удалось получить каталог из доступных источников. Проверьте соединение и настройки источников."
             } else {
                 error = "Не удалось обновить каталог. Показаны сохранённые релизы."
             }
@@ -127,11 +107,8 @@ final class CatalogService {
     }
 
     func searchLocal(_ query: String, limit: Int = 40) -> [Track] {
-        let tokens = CatalogQuality.normalized(query)
-            .split(separator: " ")
-            .map(String.init)
+        let tokens = CatalogQuality.normalized(query).split(separator: " ").map(String.init)
         guard !tokens.isEmpty else { return [] }
-
         return tracks
             .filter { track in
                 let haystack = CatalogQuality.normalized(track.searchableText)
@@ -160,9 +137,7 @@ final class CatalogService {
         decoder.dateDecodingStrategy = .iso8601
         guard let snapshot = try? decoder.decode(CatalogSnapshot.self, from: data),
               snapshot.version == CatalogSnapshot.currentVersion,
-              !snapshot.tracks.isEmpty else {
-            return nil
-        }
+              !snapshot.tracks.isEmpty else { return nil }
         return snapshot
     }
 
@@ -176,108 +151,123 @@ final class CatalogService {
             let data = try encoder.encode(snapshot)
             try data.write(to: cacheURL, options: .atomic)
         } catch {
-            // Кэш не является критичным: при ошибке каталог продолжает работать
-            // из памяти до следующего запуска.
+            // Cache is non-critical.
         }
     }
 
-    // MARK: - Queries
+    // MARK: - Discovery
 
-    private struct CatalogQuery: Sendable {
-        let id: String
-        let language: String?
-        let tag: String?
-        let search: String?
-        let order: String
-        let limit: Int
+    private enum DiscoveryBucket: String, CaseIterable {
+        case russian, international, new, popular, rap, pop, rock, electronic, indie
     }
 
-    /// Реальные выборки публичного Jamendo API. Запросы намеренно разделены:
-    /// русские новинки, популярное, жанровые теги и поиск по русскому рэпу,
-    /// который не всегда отдаётся через тег. Ошибка одной выборки не ломает
-    /// остальные.
-    private func fetchRawSections() async -> [String: [Track]] {
-        let queries: [CatalogQuery] = [
-            CatalogQuery(id: "russian_popular", language: "ru", tag: nil, search: nil, order: "popularity_month", limit: 200),
-            CatalogQuery(id: "russian_new", language: "ru", tag: nil, search: nil, order: "releasedate_desc", limit: 200),
-            CatalogQuery(id: "global_popular", language: nil, tag: nil, search: nil, order: "popularity_month", limit: 100),
-            CatalogQuery(id: "rap", language: "ru", tag: nil, search: "русский рэп", order: "popularity_month", limit: 80),
-            CatalogQuery(id: "rock", language: "ru", tag: "rock", search: nil, order: "popularity_month", limit: 80),
-            CatalogQuery(id: "pop", language: "ru", tag: "pop", search: nil, order: "popularity_month", limit: 80),
-            CatalogQuery(id: "electronic", language: "ru", tag: "electronic", search: nil, order: "popularity_month", limit: 80),
-            CatalogQuery(id: "indie", language: "ru", tag: "indie", search: nil, order: "popularity_month", limit: 80),
-            CatalogQuery(id: "folk", language: "ru", tag: "folk", search: nil, order: "popularity_month", limit: 80),
-            CatalogQuery(id: "classical", language: "ru", tag: "classical", search: nil, order: "popularity_month", limit: 80),
-            CatalogQuery(id: "jazz", language: nil, tag: "jazz", search: nil, order: "popularity_month", limit: 80)
+    private func fetchDiscovery() async -> [DiscoveryBucket: [Track]] {
+        let enabled = enabledProviderIDs()
+        let active = providers.filter { enabled.contains($0.id) || $0.capabilities.isLocal }
+        guard !active.isEmpty else { return [:] }
+
+        let queries: [(DiscoveryBucket, String, SearchType)] = [
+            (.russian, "русская музыка", .track),
+            (.russian, "русский рэп", .track),
+            (.international, "popular music", .track),
+            (.international, "international hits", .track),
+            (.new, "new releases", .track),
+            (.popular, "popular", .track),
+            (.rap, "hip hop rap", .track),
+            (.pop, "pop music", .track),
+            (.rock, "rock", .track),
+            (.electronic, "electronic", .track),
+            (.indie, "indie", .track)
         ]
 
-        var result: [String: [Track]] = [:]
-        await withTaskGroup(of: (String, [Track]).self) { group in
-            for query in queries {
-                group.addTask { [provider] in
-                    // Публичный Jamendo API периодически отвечает пустым списком
-                    // на валидный запрос (наблюдалось на popularity_month,
-                    // releasedate_desc и жанровых тегах). Пустой ответ не
-                    // считается окончательным: делаем ещё две попытки, чтобы
-                    // не терять целую полку из-за разового сбоя.
-                    for attempt in 0..<3 {
-                        if Task.isCancelled { return (query.id, []) }
-                        if attempt > 0 {
-                            try? await Task.sleep(nanoseconds: UInt64(attempt) * 400_000_000)
-                        }
-                        do {
-                            let tracks = try await provider.discoveryTracks(
-                                language: query.language,
-                                tag: query.tag,
-                                search: query.search,
-                                order: query.order,
-                                limit: query.limit
-                            )
-                            if !tracks.isEmpty {
-                                return (query.id, tracks)
-                            }
-                        } catch {
-                            if Task.isCancelled { return (query.id, []) }
-                        }
+        var buckets: [DiscoveryBucket: [Track]] = [:]
+        // Limit concurrency to avoid hammering public APIs.
+        let maxConcurrent = 4
+        var index = 0
+        while index < queries.count {
+            let chunk = Array(queries[index..<min(index + maxConcurrent, queries.count)])
+            let chunkResults = await withTaskGroup(of: (DiscoveryBucket, [Track]).self) { group in
+                for item in chunk {
+                    group.addTask { [active] in
+                        let tracks = await self.fetchBucketTracks(bucket: item.0, query: item.1, type: item.2, providers: active)
+                        return (item.0, tracks)
                     }
-                    return (query.id, [])
                 }
+                var out: [(DiscoveryBucket, [Track])] = []
+                for await r in group { out.append(r) }
+                return out
             }
-            for await (id, tracks) in group {
-                result[id] = tracks
+            for (bucket, tracks) in chunkResults {
+                buckets[bucket, default: []].append(contentsOf: tracks)
+            }
+            index += maxConcurrent
+        }
+
+        // Extra high-quality discovery for providers with native endpoints.
+        for provider in active {
+            if let jamendo = provider as? JamendoProvider {
+                async let ruPop = (try? jamendo.discoveryTracks(language: "ru", order: "popularity_month", limit: 120)) ?? []
+                async let ruNew = (try? jamendo.discoveryTracks(language: "ru", order: "releasedate_desc", limit: 120)) ?? []
+                async let global = (try? jamendo.discoveryTracks(language: nil, order: "popularity_month", limit: 80)) ?? []
+                let (a,b,c) = await (ruPop, ruNew, global)
+                buckets[.russian, default: []].append(contentsOf: a)
+                buckets[.new, default: []].append(contentsOf: b)
+                buckets[.popular, default: []].append(contentsOf: c)
+                buckets[.international, default: []].append(contentsOf: c)
+            } else if let audius = provider as? AudiusProvider {
+                async let trending = (try? audius.trendingTracks(limit: 60, time: "week")) ?? []
+                async let monthly = (try? audius.latestTracks(limit: 40)) ?? []
+                let (t, m) = await (trending, monthly)
+                buckets[.popular, default: []].append(contentsOf: t)
+                buckets[.international, default: []].append(contentsOf: t)
+                buckets[.new, default: []].append(contentsOf: m)
             }
         }
-        return result
+
+        return buckets
+    }
+
+    private func fetchBucketTracks(
+        bucket: DiscoveryBucket,
+        query: String,
+        type: SearchType,
+        providers: [any MusicProvider]
+    ) async -> [Track] {
+        await withTaskGroup(of: [Track].self) { group in
+            for provider in providers {
+                guard provider.capabilities.supportsSearch else { continue }
+                group.addTask {
+                    if Task.isCancelled { return [] }
+                    do {
+                        let result = try await provider.search(query: query, type: type)
+                        return result.tracks
+                    } catch {
+                        return []
+                    }
+                }
+            }
+            var all: [Track] = []
+            for await part in group { all.append(contentsOf: part) }
+            // Keep better candidates per bucket.
+            return Array(all.prefix(200))
+        }
     }
 
     // MARK: - Snapshot building
 
-    private func buildSnapshot(from raw: [String: [Track]]) -> CatalogSnapshot {
-        let russian = unique(raw["russian_popular"].orEmpty + raw["russian_new"].orEmpty)
-        // Jamendo периодически отдаёт пустой ответ на валидные запросы, а
-        // «Новинки» должны быть русскоязычными. Поэтому полка строится из
-        // реальной русской ленты releasedate_desc; дубли с «Русской волной»
-        // отсекаются при сборке верхних полок.
-        let newReleases = diversified(
-            unique(raw["russian_new"].orEmpty)
-                .sorted { ($0.releaseDate ?? .distantPast) > ($1.releaseDate ?? .distantPast) },
-            maxPerArtist: 2
-        )
-        let popular = unique(raw["global_popular"].orEmpty + raw["russian_popular"].orEmpty)
-        let rap = unique(raw["rap"].orEmpty)
-        let rock = unique(raw["rock"].orEmpty)
-        let pop = unique(raw["pop"].orEmpty)
-        let electronic = unique(raw["electronic"].orEmpty)
-        let indie = unique(raw["indie"].orEmpty)
-        let folk = unique(raw["folk"].orEmpty)
-        let jazz = unique(raw["jazz"].orEmpty)
-        let classical = unique(raw["classical"].orEmpty)
+    private func buildSnapshot(from raw: [DiscoveryBucket: [Track]]) -> CatalogSnapshot {
+        let russian = merged(raw[.russian].orEmpty, preferRussian: true)
+        let international = merged(raw[.international].orEmpty, preferRussian: false)
+        let popular = merged((raw[.popular].orEmpty) + (raw[.international].orEmpty), preferRussian: true)
+        let new = merged((raw[.new].orEmpty) + (raw[.russian].orEmpty.filter { $0.releaseDate != nil }), preferRussian: true)
+            .sorted { ($0.releaseDate ?? .distantPast) > ($1.releaseDate ?? .distantPast) }
+        let rap = merged(raw[.rap].orEmpty, preferRussian: true)
+        let pop = merged(raw[.pop].orEmpty, preferRussian: true)
+        let rock = merged(raw[.rock].orEmpty, preferRussian: true)
+        let electronic = merged(raw[.electronic].orEmpty, preferRussian: true)
+        let indie = merged(raw[.indie].orEmpty, preferRussian: true)
 
         var sections: [CatalogSection] = []
-        // Верхние редакционные полки не должны повторять друг друга: один и
-        // тот же трек не показывается одновременно в герое, «Новинках» и
-        // чарте. Жанровые полки ниже остаются независимыми, иначе из-за
-        // пересечений они могли бы полностью опустеть.
         var topLevelKeys = Set<String>()
 
         func appendSection(
@@ -287,11 +277,12 @@ final class CatalogService {
             tracks: [Track],
             limit: Int,
             excluding: Set<String> = [],
-            trackInTopLevel: Bool = false
+            trackInTopLevel: Bool = false,
+            featuredOnly: Bool = true
         ) {
             var local = Set<String>()
             let picked = tracks.filter { track in
-                guard CatalogQuality.isFeatured(track) else { return false }
+                if featuredOnly ? !CatalogQuality.isFeatured(track) : !CatalogQuality.isDisplayable(track) { return false }
                 let key = CatalogQuality.dedupKey(for: track)
                 guard local.insert(key).inserted, !excluding.contains(key) else { return false }
                 return true
@@ -303,99 +294,21 @@ final class CatalogService {
             if trackInTopLevel {
                 topLevelKeys.formUnion(picked.map { CatalogQuality.dedupKey(for: $0) })
             }
-            sections.append(
-                CatalogSection(id: id, title: title, subtitle: subtitle, tracks: picked)
-            )
+            sections.append(CatalogSection(id: id, title: title, subtitle: subtitle, tracks: picked))
         }
 
-        appendSection(
-            id: "russian",
-            title: "Русская волна",
-            subtitle: "Открытые релизы на русском языке",
-            tracks: russian,
-            limit: 36,
-            trackInTopLevel: true
-        )
-        appendSection(
-            id: "new",
-            title: "Новинки",
-            subtitle: "Свежие публикации в открытых каталогах",
-            tracks: newReleases,
-            limit: 30,
-            excluding: topLevelKeys,
-            trackInTopLevel: true
-        )
-        appendSection(
-            id: "popular",
-            title: "Популярное сейчас",
-            subtitle: "Что чаще слушают в открытом каталоге",
-            tracks: popular,
-            limit: 30,
-            excluding: topLevelKeys,
-            trackInTopLevel: true
-        )
-        appendSection(
-            id: "rap",
-            title: "Русский рэп",
-            subtitle: "Новые имена и независимые релизы",
-            tracks: rap,
-            limit: 24
-        )
-        appendSection(
-            id: "rock",
-            title: "Рок и альтернатива",
-            subtitle: "Гитары, которое стоит включить",
-            tracks: rock,
-            limit: 24
-        )
-        appendSection(
-            id: "pop",
-            title: "Поп",
-            subtitle: "Мелодии с характером",
-            tracks: pop,
-            limit: 24
-        )
-        appendSection(
-            id: "electronic",
-            title: "Электроника",
-            subtitle: "Синтез, ритм и пространство",
-            tracks: electronic,
-            limit: 24
-        )
-        appendSection(
-            id: "indie",
-            title: "Инди",
-            subtitle: "Самостоятельная музыка без посредников",
-            tracks: indie,
-            limit: 24
-        )
-        appendSection(
-            id: "folk",
-            title: "Фолк и акустика",
-            subtitle: "Живые голоса и инструменты",
-            tracks: folk,
-            limit: 20
-        )
-        appendSection(
-            id: "jazz",
-            title: "Джаз и инструментал",
-            subtitle: "Для спокойного вечера",
-            tracks: jazz,
-            limit: 20
-        )
-        appendSection(
-            id: "classical",
-            title: "Классика",
-            subtitle: "Свободные записи академической музыки",
-            tracks: classical,
-            limit: 20
-        )
+        appendSection(id: "russian", title: "Русская волна", subtitle: "Русская музыка из доступных открытых источников", tracks: russian.filter(\.isRussian), limit: 36, trackInTopLevel: true)
+        appendSection(id: "international", title: "Зарубежная музыка", subtitle: "Международные треки из открытых каталогов", tracks: international.filter { !$0.isRussian }, limit: 30, excluding: topLevelKeys, trackInTopLevel: true)
+        appendSection(id: "new", title: "Новинки", subtitle: "Свежие и актуальные релизы", tracks: diversified(new, maxPerArtist: 2), limit: 30, excluding: topLevelKeys, trackInTopLevel: true)
+        appendSection(id: "popular", title: "Популярное", subtitle: "Популярные композиции из подключённых источников", tracks: popular, limit: 30, excluding: topLevelKeys, trackInTopLevel: true)
+        appendSection(id: "rap", title: "Рэп и хип-хоп", subtitle: "Ритм, поток и энергия", tracks: rap, limit: 24)
+        appendSection(id: "pop", title: "Поп", subtitle: "Мелодии для любого настроения", tracks: pop, limit: 24)
+        appendSection(id: "rock", title: "Рок", subtitle: "Гитары и драйв", tracks: rock, limit: 24)
+        appendSection(id: "electronic", title: "Электроника", subtitle: "Синтез, ритм и пространство", tracks: electronic, limit: 24)
+        appendSection(id: "indie", title: "Инди", subtitle: "Независимая музыка", tracks: indie, limit: 24)
 
-        // Каталог целиком дедуплицируется отдельно. Полки могут пересекаться:
-        // один и тот же релиз законно встречается в «Русской волне» и в жанровой
-        // подборке, но внутри полки дублей нет.
-        let allTracks = unique(raw.values.flatMap { $0 })
-            .filter(CatalogQuality.isFeatured)
+        let allTracks = merged(raw.values.flatMap { $0 }, preferRussian: true)
+            .filter { CatalogQuality.isDisplayable($0) }
             .sorted {
                 let left = CatalogQuality.score($0)
                 let right = CatalogQuality.score($1)
@@ -403,33 +316,50 @@ final class CatalogService {
                 return $0.id < $1.id
             }
 
-        let albums = makeAlbums(from: allTracks)
+        let albums = makeAlbums(from: allTracks.filter { $0.album != nil })
         let artists = makeArtists(from: allTracks)
-        let orderedSections = sections.filter { !$0.tracks.isEmpty }
+
+        if !albums.isEmpty {
+            let albumTracks = albums.prefix(20).compactMap { $0.tracks.first ?? allTracks.first(where: { $0.album == $1Title($0: $1, album: $0) }) }
+            // Simpler: represent albums section via representative playable/displayable tracks from albums.
+        }
+
+        // Album/artist sections as track-backed editorial rows for navigation context.
+        let albumRepresentative = uniqueTracks(Array(albums.prefix(24).compactMap { $0.tracks.first }))
+        if !albumRepresentative.isEmpty {
+            sections.append(CatalogSection(id: "albums", title: "Альбомы", subtitle: "Подборка релизов из каталога", tracks: albumRepresentative))
+        }
+        let artistRepresentative = uniqueTracks(Array(artists.prefix(24).compactMap { artist in allTracks.first(where: { CatalogQuality.artistKey($0.artist) == CatalogQuality.artistKey(artist.name) }) }))
+        if !artistRepresentative.isEmpty {
+            sections.append(CatalogSection(id: "artists", title: "Исполнители", subtitle: "Представительные треки исполнителей", tracks: artistRepresentative))
+        }
 
         return CatalogSnapshot(
             generatedAt: Date(),
-            sections: orderedSections,
+            sections: sections.filter { !$0.tracks.isEmpty },
             tracks: allTracks,
             albums: albums,
             artists: artists
         )
     }
 
-    private func unique(_ tracks: [Track]) -> [Track] {
+    private func $1Title($0: Track, album: Track) -> Bool { false } // unused helper placeholder avoided
+
+    private func merged(_ tracks: [Track], preferRussian: Bool) -> [Track] {
+        SearchMerger.merge(tracks: tracks, query: "", preferRussian: preferRussian)
+            .filter { CatalogQuality.isDisplayable($0) }
+    }
+
+    private func uniqueTracks(_ tracks: [Track]) -> [Track] {
         var seen = Set<String>()
         var result: [Track] = []
         for track in tracks {
             let key = CatalogQuality.dedupKey(for: track)
-            if seen.insert(key).inserted {
-                result.append(track)
-            }
+            if seen.insert(key).inserted { result.append(track) }
         }
         return result
     }
 
-    /// Не даёт одной новой пластинке занять всю полку «Новинки»: у каждого
-    /// исполнителя остаётся не больше `maxPerArtist` треков.
     private func diversified(_ tracks: [Track], maxPerArtist: Int) -> [Track] {
         guard maxPerArtist > 0 else { return tracks }
         var counts: [String: Int] = [:]
@@ -443,26 +373,19 @@ final class CatalogService {
     }
 
     private func makeAlbums(from tracks: [Track]) -> [Album] {
-        struct AlbumGroup {
-            var tracks: [Track]
-            var best: Track
-        }
-
+        struct AlbumGroup { var tracks: [Track]; var best: Track }
         var groups: [String: AlbumGroup] = [:]
         for track in tracks {
-            guard let title = track.album, !title.isEmpty, track.artworkURL != nil else { continue }
+            guard let title = track.album, !title.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { continue }
             let key = CatalogQuality.albumKey(artist: track.artist, title: title)
             if var group = groups[key] {
                 group.tracks.append(track)
-                if CatalogQuality.score(track) > CatalogQuality.score(group.best) {
-                    group.best = track
-                }
+                if CatalogQuality.score(track) > CatalogQuality.score(group.best) { group.best = track }
                 groups[key] = group
             } else {
                 groups[key] = AlbumGroup(tracks: [track], best: track)
             }
         }
-
         return groups.values.compactMap { group -> Album? in
             let best = group.best
             guard let title = best.album, !title.isEmpty else { return nil }
@@ -473,10 +396,10 @@ final class CatalogService {
                 return lhs.title.localizedStandardCompare(rhs.title) == .orderedAscending
             }
             return Album(
-                id: best.albumID ?? "\(best.providerID)_album_\(title.stableFNVHash)",
+                id: best.albumID ?? "\(best.providerID)_album_\(CatalogQuality.albumKey(artist: best.artist, title: title).stableFNVHash)",
                 title: title,
                 artist: best.artist,
-                artworkURL: best.artworkURL,
+                artworkURL: best.artworkURL ?? sortedTracks.compactMap(\.artworkURL).first,
                 releaseDate: group.tracks.compactMap(\.releaseDate).max(),
                 providerID: best.providerID,
                 tracks: sortedTracks
@@ -492,7 +415,6 @@ final class CatalogService {
 
     private func makeArtists(from tracks: [Track]) -> [Artist] {
         var artistsByKey: [String: (Artist, Track)] = [:]
-
         for track in tracks {
             let key = CatalogQuality.artistKey(track.artist)
             guard !key.isEmpty, !CatalogQuality.isUnknownArtist(track.artist) else { continue }
@@ -502,7 +424,7 @@ final class CatalogService {
                 }
             } else {
                 let artist = Artist(
-                    id: "jamendo_artist_\(key.stableFNVHash)",
+                    id: "\(track.providerID)_artist_\(key.stableFNVHash)",
                     name: track.artist,
                     artworkURL: track.artworkURL,
                     biography: nil,
@@ -511,20 +433,17 @@ final class CatalogService {
                 artistsByKey[key] = (artist, track)
             }
         }
-
         return artistsByKey.values
             .map { pair in
                 Artist(
                     id: pair.0.id,
                     name: pair.0.name,
-                    artworkURL: pair.1.artworkURL,
+                    artworkURL: pair.1.artworkURL ?? pair.0.artworkURL,
                     biography: pair.0.biography,
                     providerID: pair.0.providerID
                 )
             }
-            .sorted { lhs, rhs in
-                lhs.name.localizedStandardCompare(rhs.name) == .orderedAscending
-            }
+            .sorted { $0.name.localizedStandardCompare($1.name) == .orderedAscending }
     }
 }
 
