@@ -85,6 +85,65 @@ jobs:
             CODE_SIGN_IDENTITY="" \
             test
 
+      - name: Capture simulator screenshots
+        id: screenshots
+        continue-on-error: true
+        run: |
+          set -euo pipefail
+          SIM_NAME="${{ steps.simulator.outputs.name }}"
+          APP_PATH="$(find build/DerivedData/Build/Products/Debug-iphonesimulator -maxdepth 1 -name 'VOLNA.app' -print -quit)"
+          test -n "$APP_PATH"
+
+          xcrun simctl boot "$SIM_NAME" 2>/dev/null || true
+          xcrun simctl bootstatus "$SIM_NAME" -b
+          xcrun simctl uninstall "$SIM_NAME" com.volna.app 2>/dev/null || true
+          xcrun simctl install "$SIM_NAME" "$APP_PATH"
+
+          mkdir -p artifacts/screenshots
+          CONTAINER="$(xcrun simctl get_app_container "$SIM_NAME" com.volna.app data)"
+          READY_DIR="$CONTAINER/Documents/VOLNA"
+
+          capture() {
+            local marker="$1"
+            local output="$2"
+            shift 2
+
+            xcrun simctl terminate "$SIM_NAME" com.volna.app 2>/dev/null || true
+            rm -f "$READY_DIR/$marker"
+            xcrun simctl launch "$SIM_NAME" com.volna.app \
+              -uiScreenshotReadyFile "$marker" "$@"
+
+            for _ in $(seq 1 120); do
+              if [ -f "$READY_DIR/$marker" ]; then
+                break
+              fi
+              sleep 1
+            done
+            if [ ! -f "$READY_DIR/$marker" ]; then
+              echo "::warning::Маркер готовности $marker не появился за 120 секунд"
+            fi
+
+            # Даём AsyncImage загрузить обложки и завершиться анимации.
+            sleep 3
+            xcrun simctl io "$SIM_NAME" screenshot "artifacts/screenshots/$output"
+          }
+
+          capture home.ready 01-home.png -uiScreenshotTab home
+          capture search.ready 02-search.png -uiScreenshotTab search
+          capture library.ready 03-library.png -uiScreenshotTab library
+          capture player.ready 04-player.png -uiScreenshotPlayer
+
+          ls -lh artifacts/screenshots
+
+      - name: Upload simulator screenshots
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: simulator-screenshots
+          path: artifacts/screenshots
+          if-no-files-found: warn
+          retention-days: 14
+
       - name: Upload build logs on failure
         if: failure()
         uses: actions/upload-artifact@v4

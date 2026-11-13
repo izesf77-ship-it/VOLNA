@@ -287,6 +287,9 @@ final class SearchService {
         if filters.onlyPlayable {
             mergedTracks = mergedTracks.filter { !$0.playableStreams.isEmpty }
         }
+        // Общая проверка качества: служебные файлы, минусовки и пустые
+        // метаданные не должны попадать в выдачу даже при щедром API.
+        mergedTracks = mergedTracks.filter { CatalogQuality.isDisplayable($0) }
 
         tracks = mergedTracks
         albums = SearchMerger.mergeAlbums(rawAlbums)
@@ -470,7 +473,10 @@ enum SearchMerger {
             downloadURL: downloadURL,
             sourcePageURL: sourcePageURL,
             region: primary.region,
-            genre: primary.genre ?? bestGenre
+            genre: primary.genre ?? bestGenre,
+            releaseDate: sorted.compactMap(\.releaseDate).max(),
+            trackNumber: primary.trackNumber,
+            albumID: primary.albumID
         )
     }
 
@@ -500,6 +506,10 @@ enum SearchMerger {
         if track.license.isKnownOpenLicense { score += 5 }
         if track.artworkURL != nil { score += 3 }
         if track.duration != nil { score += 1 }
+        // Каверы и трибьюты не должны обгонять оригинальные записи в выдаче.
+        if CatalogQuality.isCoverLike(title: track.title, album: track.album) {
+            score -= 30
+        }
 
         let normalizedQuery = RussianText.normalizedKey(query)
         let title = RussianText.normalizedKey(track.title)

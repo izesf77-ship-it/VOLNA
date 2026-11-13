@@ -283,13 +283,18 @@ struct VolnaScreenModifier: ViewModifier {
             .background(VolnaBackground())
             .safeAreaInset(edge: .bottom) {
                 Color.clear
-                    .frame(
-                        height: appState.player.currentTrack != nil
-                            ? VolnaLayout.contentBottomInsetWithPlayer
-                            : VolnaLayout.contentBottomInset
-                    )
+                    .frame(height: bottomInset)
                     .allowsHitTesting(false)
             }
+    }
+
+    private var bottomInset: CGFloat {
+        if appState.bottomControlsHeight > 0 {
+            return appState.bottomControlsHeight + VolnaLayout.floatingStackSpacing
+        }
+        return appState.player.currentTrack != nil
+            ? VolnaLayout.contentBottomInsetWithPlayer
+            : VolnaLayout.contentBottomInset
     }
 }
 

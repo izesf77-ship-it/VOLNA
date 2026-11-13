@@ -2,6 +2,7 @@ import SwiftUI
 
 struct RootView: View {
     @Environment(AppState.self) private var appState
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     var body: some View {
         @Bindable var state = appState
@@ -22,7 +23,7 @@ struct RootView: View {
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity)
             .transition(.opacity.combined(with: .scale(scale: 0.995)))
-            .animation(.easeInOut(duration: 0.2), value: appState.selectedTab)
+            .animation(reduceMotion ? nil : .easeInOut(duration: 0.2), value: appState.selectedTab)
 
             // Floating bottom controls (mini player + tab bar)
             VStack(spacing: VolnaLayout.floatingStackSpacing) {
@@ -33,9 +34,17 @@ struct RootView: View {
 
                 VolnaTabBar(selection: $state.selectedTab)
             }
-            .padding(.horizontal, 16)
+            .padding(.horizontal, VolnaLayout.horizontalPadding)
             .padding(.top, 8)
             .padding(.bottom, VolnaLayout.tabBarBottomMargin)
+            .background {
+                GeometryReader { proxy in
+                    Color.clear.preference(
+                        key: BottomControlsHeightKey.self,
+                        value: proxy.size.height
+                    )
+                }
+            }
             .background {
                 // Subtle fade so content doesn't clash with floating bar
                 LinearGradient(
@@ -52,25 +61,124 @@ struct RootView: View {
                 .allowsHitTesting(false)
                 .ignoresSafeArea(edges: .bottom)
             }
+            .ignoresSafeArea(.keyboard, edges: .bottom)
         }
-        .ignoresSafeArea(.keyboard, edges: .bottom)
+        .onPreferenceChange(BottomControlsHeightKey.self) { height in
+            guard height > 0, abs(appState.bottomControlsHeight - height) > 0.5 else { return }
+            appState.bottomControlsHeight = height
+        }
         .fullScreenCover(isPresented: $state.isPlayerPresented) {
             PlayerView()
                 .environment(appState)
         }
+        // Каталог загружается один раз на уровне корня, а не только на
+        // главной: поиск и настройки должны видеть те же реальные релизы,
+        // даже если пользователь сразу переключил вкладку.
+        .task {
+            await appState.catalog.loadIfNeeded()
+        }
+        #if DEBUG
+        .task {
+            await applyScreenshotArguments()
+        }
+        #endif
+    }
+
+    #if DEBUG
+    /// Управляет экраном для CI-скриншотов. Ждёт окончания загрузки каталога,
+    /// потому что HomeView запускает её параллельно; без ожидания игрок мог
+    /// открыться до появления первого трека.
+    private func applyScreenshotArguments() async {
+        let arguments = ProcessInfo.processInfo.arguments
+        if let index = arguments.firstIndex(of: "-uiScreenshotTab"),
+           arguments.indices.contains(index + 1) {
+            switch arguments[index + 1] {
+            case "search": appState.selectedTab = .search
+            case "library": appState.selectedTab = .library
+            default: appState.selectedTab = .home
+            }
+        }
+
+        let wantsPlayer = arguments.contains("-uiScreenshotPlayer")
+        guard wantsPlayer
+            || arguments.contains("-uiScreenshotTab")
+            || arguments.contains("-uiScreenshotReadyFile") else {
+            return
+        }
+
+        await waitForCatalog(timeout: wantsPlayer ? 90 : 60)
+
+        if wantsPlayer, let track = appState.catalog.tracks.first {
+            appState.play(track, in: Array(appState.catalog.tracks.prefix(20)))
+            try? await Task.sleep(nanoseconds: 700_000_000)
+            appState.isPlayerPresented = true
+            try? await Task.sleep(nanoseconds: 900_000_000)
+        }
+
+        if let index = arguments.firstIndex(of: "-uiScreenshotReadyFile"),
+           arguments.indices.contains(index + 1) {
+            writeScreenshotMarker(named: arguments[index + 1])
+        }
+    }
+
+    private func waitForCatalog(timeout: TimeInterval) async {
+        let deadline = Date().addingTimeInterval(timeout)
+        var attempts = 0
+
+        while Date() < deadline {
+            if !appState.catalog.isEmpty, !appState.catalog.isLoading {
+                return
+            }
+            if !appState.catalog.isLoading, !appState.isHomeLoading {
+                guard attempts < 2 else { break }
+                attempts += 1
+                await appState.catalog.loadIfNeeded()
+            }
+            try? await Task.sleep(nanoseconds: 300_000_000)
+        }
+    }
+
+    private func writeScreenshotMarker(named name: String) {
+        let safeName = (name as NSString).lastPathComponent
+        guard !safeName.isEmpty,
+              let documents = FileManager.default.urls(
+                for: .documentDirectory,
+                in: .userDomainMask
+              ).first else {
+            return
+        }
+        let directory = documents.appendingPathComponent("VOLNA", isDirectory: true)
+        try? FileManager.default.createDirectory(
+            at: directory,
+            withIntermediateDirectories: true
+        )
+        try? Data("ready".utf8).write(
+            to: directory.appendingPathComponent(safeName),
+            options: .atomic
+        )
+    }
+    #endif
+}
+
+private struct BottomControlsHeightKey: PreferenceKey {
+    static var defaultValue: CGFloat = 0
+
+    static func reduce(value: inout CGFloat, nextValue: () -> CGFloat) {
+        value = max(value, nextValue())
     }
 }
 
 struct VolnaTabBar: View {
     @Binding var selection: AppTab
     @Namespace private var tabNamespace
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     var body: some View {
         HStack(spacing: 0) {
             ForEach(AppTab.allCases, id: \.self) { tab in
                 let isSelected = tab == selection
                 Button {
-                    withAnimation(.spring(response: 0.34, dampingFraction: 0.82)) {
+                    withAnimation(reduceMotion ? nil : .spring(response: 0.34, dampingFraction: 0.82)) {
                         selection = tab
                     }
                 } label: {
@@ -79,17 +187,18 @@ struct VolnaTabBar: View {
                             if isSelected {
                                 Capsule()
                                     .fill(Color.volnaAccentGradient.opacity(0.22))
-                                    .frame(width: 56, height: 32)
+                                    .frame(width: 58, height: 32)
                                     .matchedGeometryEffect(id: "tab-bg", in: tabNamespace)
                             }
                             Image(systemName: isSelected ? tab.selectedIcon : tab.icon)
-                                .font(.system(size: 20, weight: isSelected ? .semibold : .regular))
+                                .font(.system(size: 21, weight: isSelected ? .semibold : .regular))
                                 .symbolRenderingMode(.hierarchical)
+                                .contentTransition(.symbolEffect(.replace))
                         }
                         .frame(height: 32)
 
                         Text(tab.title)
-                            .font(.system(size: 10, weight: isSelected ? .semibold : .medium, design: .default))
+                            .font(VolnaFont.custom(11, weight: isSelected ? .semibold : .medium, relativeTo: .caption2))
                             .lineLimit(1)
                             .minimumScaleFactor(0.85)
                     }

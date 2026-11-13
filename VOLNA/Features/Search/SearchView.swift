@@ -2,6 +2,7 @@ import SwiftUI
 
 struct SearchView: View {
     @Environment(AppState.self) private var appState
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     @State private var query = ""
     @State private var filters = SearchFilters.default
@@ -10,6 +11,14 @@ struct SearchView: View {
     @State private var showSettings = false
 
     private var service: SearchService { appState.searchService }
+    private var trimmedQuery: String {
+        query.trimmingCharacters(in: .whitespacesAndNewlines)
+    }
+    private var queryTokens: [String] {
+        CatalogQuality.normalized(trimmedQuery)
+            .split(separator: " ")
+            .map(String.init)
+    }
 
     var body: some View {
         NavigationStack {
@@ -19,9 +28,9 @@ struct SearchView: View {
                     searchField
                     filterRow
 
-                    if query.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                    if trimmedQuery.isEmpty {
                         discovery
-                    } else if service.isSearching && service.tracks.isEmpty && service.albums.isEmpty && service.artists.isEmpty {
+                    } else if service.isSearching && !hasAnyResult {
                         loadingState
                     } else {
                         resultsContent
@@ -29,7 +38,7 @@ struct SearchView: View {
                 }
                 .padding(.horizontal, VolnaLayout.horizontalPadding)
                 .padding(.top, 8)
-                .padding(.bottom, 16)
+                .padding(.bottom, 20)
             }
             .volnaScreenLayout()
             .scrollDismissesKeyboard(.interactively)
@@ -38,15 +47,17 @@ struct SearchView: View {
             .navigationDestination(for: Album.self) { AlbumView(album: $0) }
             .navigationDestination(for: Playlist.self) { PlaylistDetailView(playlistID: $0.id) }
             .navigationDestination(isPresented: $showSettings) { SettingsView() }
+            .task {
+                await appState.catalog.loadIfNeeded()
+            }
             .task(id: searchKey) {
-                let trimmed = query.trimmingCharacters(in: .whitespacesAndNewlines)
-                guard !trimmed.isEmpty else {
+                guard !trimmedQuery.isEmpty else {
                     service.reset()
                     return
                 }
                 try? await Task.sleep(nanoseconds: 380_000_000)
                 guard !Task.isCancelled else { return }
-                appState.performSearch(query: trimmed, filters: filters)
+                appState.performSearch(query: trimmedQuery, filters: filters)
             }
         }
     }
@@ -62,17 +73,18 @@ struct SearchView: View {
         HStack(alignment: .center) {
             VStack(alignment: .leading, spacing: 4) {
                 Text("Поиск")
-                    .font(.system(size: 34, weight: .bold, design: .default))
+                    .font(VolnaFont.custom(32, weight: .bold, relativeTo: .largeTitle))
                     .foregroundStyle(Color.volnaTextPrimary)
-                Text("Музыка из открытых источников")
-                    .font(.system(size: 15, weight: .regular, design: .default))
+                Text("По трекам, исполнителям, альбомам и плейлистам")
+                    .font(VolnaFont.custom(14, weight: .regular, relativeTo: .subheadline))
                     .foregroundStyle(Color.volnaTextSecondary)
+                    .lineLimit(2)
             }
-            Spacer()
+            Spacer(minLength: 8)
             Button { showSettings = true } label: {
                 Image(systemName: "gearshape")
             }
-            .buttonStyle(VolnaIconButtonStyle())
+            .buttonStyle(VolnaIconButtonStyle(size: 40))
             .accessibilityLabel("Настройки")
         }
         .padding(.top, 4)
@@ -84,17 +96,17 @@ struct SearchView: View {
                 .font(.system(size: 17, weight: .medium))
                 .foregroundStyle(isFocused ? Color.volnaPurple : Color.volnaTextTertiary)
 
-            TextField("Песня, исполнитель или альбом", text: $query)
+            TextField("Песня, исполнитель, альбом или плейлист", text: $query)
                 .focused($isFocused)
-                .font(.system(size: 16, weight: .regular, design: .default))
+                .font(VolnaFont.custom(16, weight: .regular, relativeTo: .body))
                 .foregroundStyle(Color.volnaTextPrimary)
                 .textInputAutocapitalization(.never)
                 .autocorrectionDisabled()
                 .submitLabel(.search)
                 .onSubmit {
-                    let trimmed = query.trimmingCharacters(in: .whitespacesAndNewlines)
-                    guard !trimmed.isEmpty else { return }
-                    appState.performSearch(query: trimmed, filters: filters)
+                    recordCurrentQuery()
+                    guard !trimmedQuery.isEmpty else { return }
+                    appState.performSearch(query: trimmedQuery, filters: filters)
                 }
 
             if !query.isEmpty {
@@ -107,6 +119,7 @@ struct SearchView: View {
                         .foregroundStyle(Color.volnaTextTertiary)
                 }
                 .buttonStyle(.plain)
+                .accessibilityLabel("Очистить запрос")
             } else if service.isSearching {
                 ProgressView()
                     .tint(Color.volnaPurple)
@@ -123,7 +136,7 @@ struct SearchView: View {
                         .stroke(isFocused ? Color.volnaPurple.opacity(0.5) : Color.white.opacity(0.06), lineWidth: 1)
                 }
         }
-        .animation(.easeInOut(duration: 0.2), value: isFocused)
+        .animation(reduceMotion ? nil : .easeInOut(duration: 0.2), value: isFocused)
     }
 
     private var filterRow: some View {
@@ -158,63 +171,180 @@ struct SearchView: View {
 
     private var discovery: some View {
         VStack(alignment: .leading, spacing: VolnaLayout.sectionSpacing) {
-            VStack(alignment: .leading, spacing: 14) {
-                SectionHeader(title: "Популярные запросы")
-                LazyVGrid(columns: [GridItem(.adaptive(minimum: 140), spacing: 10)], spacing: 10) {
-                    ForEach(SearchService.popularQueries, id: \.self) { item in
-                        Button {
-                            query = item
-                            isFocused = false
-                        } label: {
-                            HStack {
-                                Text(item)
-                                    .font(.system(size: 14, weight: .medium, design: .default))
-                                    .foregroundStyle(Color.volnaTextPrimary)
-                                    .lineLimit(1)
-                                Spacer(minLength: 4)
-                                Image(systemName: "arrow.up.right")
-                                    .font(.system(size: 10, weight: .semibold))
-                                    .foregroundStyle(Color.volnaTextTertiary)
-                            }
-                            .padding(.horizontal, 14)
-                            .padding(.vertical, 12)
-                            .background(Color.volnaSurface, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
-                            .overlay {
-                                RoundedRectangle(cornerRadius: 14, style: .continuous)
-                                    .stroke(Color.white.opacity(0.05), lineWidth: 1)
-                            }
-                        }
-                        .buttonStyle(.plain)
-                    }
-                }
+            if !appState.searchHistory.queries.isEmpty {
+                historySection
             }
 
-            VStack(alignment: .leading, spacing: 14) {
-                SectionHeader(title: "Русская музыка", subtitle: "Подборки на русском языке")
-                ScrollView(.horizontal, showsIndicators: false) {
-                    HStack(spacing: 10) {
-                        ForEach(SearchService.russianQueries, id: \.self) { item in
-                            Button {
-                                query = item
-                                filters.language = "ru"
-                                isFocused = false
-                            } label: {
-                                Text(item)
-                                    .font(.system(size: 14, weight: .medium, design: .default))
-                                    .foregroundStyle(Color.volnaTextPrimary)
-                                    .padding(.horizontal, 16)
-                                    .padding(.vertical, 10)
-                                    .background(Color.volnaPurple.opacity(0.15), in: Capsule())
-                                    .overlay { Capsule().stroke(Color.volnaPurple.opacity(0.25), lineWidth: 1) }
-                            }
-                            .buttonStyle(.plain)
-                        }
-                    }
-                }
-                .scrollClipDisabled()
+            popularQueriesSection
+
+            if !appState.catalog.recentAlbums.isEmpty {
+                catalogAlbumsDiscovery
+            }
+
+            if !appState.catalog.russianTracks.isEmpty {
+                catalogTracksDiscovery
             }
 
             howItWorksCard
+        }
+    }
+
+    private var historySection: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            SectionHeader(
+                title: "Недавние запросы",
+                subtitle: "Сохраняются только на этом iPhone",
+                actionTitle: "Очистить"
+            ) {
+                appState.searchHistory.clear()
+            }
+
+            ScrollView(.horizontal, showsIndicators: false) {
+                HStack(spacing: 8) {
+                    ForEach(appState.searchHistory.queries, id: \.self) { item in
+                        HStack(spacing: 4) {
+                            Button {
+                                applySuggestion(item)
+                            } label: {
+                                HStack(spacing: 7) {
+                                    Image(systemName: "clock.arrow.circlepath")
+                                        .font(.system(size: 11, weight: .semibold))
+                                    Text(item)
+                                        .font(VolnaFont.custom(13, weight: .medium, relativeTo: .footnote))
+                                        .lineLimit(1)
+                                }
+                                .foregroundStyle(Color.volnaTextPrimary)
+                                .padding(.leading, 12)
+                                .padding(.vertical, 10)
+                            }
+                            .buttonStyle(.plain)
+
+                            Button {
+                                appState.searchHistory.remove(item)
+                            } label: {
+                                Image(systemName: "xmark")
+                                    .font(.system(size: 9, weight: .bold))
+                                    .foregroundStyle(Color.volnaTextTertiary)
+                                    .frame(width: 30, height: 38)
+                                    .contentShape(Rectangle())
+                            }
+                            .buttonStyle(.plain)
+                            .accessibilityLabel("Удалить запрос \(item)")
+                        }
+                        .padding(.trailing, 2)
+                        .background(Color.volnaSurface, in: Capsule())
+                        .overlay {
+                            Capsule()
+                                .stroke(Color.white.opacity(0.06), lineWidth: 1)
+                        }
+                    }
+                }
+                .padding(.vertical, 2)
+            }
+            .scrollClipDisabled()
+        }
+    }
+
+    private var popularQueriesSection: some View {
+        VStack(alignment: .leading, spacing: 14) {
+            SectionHeader(title: "Популярные запросы", subtitle: "Что ищут в открытой музыке")
+            LazyVGrid(columns: [GridItem(.adaptive(minimum: 145), spacing: 10)], spacing: 10) {
+                ForEach(SearchService.popularQueries, id: \.self) { item in
+                    Button {
+                        applySuggestion(item)
+                    } label: {
+                        HStack {
+                            Text(item)
+                                .font(VolnaFont.custom(14, weight: .medium, relativeTo: .subheadline))
+                                .foregroundStyle(Color.volnaTextPrimary)
+                                .lineLimit(1)
+                            Spacer(minLength: 4)
+                            Image(systemName: "arrow.up.right")
+                                .font(.system(size: 10, weight: .semibold))
+                                .foregroundStyle(Color.volnaTextTertiary)
+                        }
+                        .padding(.horizontal, 14)
+                        .padding(.vertical, 12)
+                        .background(Color.volnaSurface, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+                        .overlay {
+                            RoundedRectangle(cornerRadius: 14, style: .continuous)
+                                .stroke(Color.white.opacity(0.05), lineWidth: 1)
+                        }
+                    }
+                    .buttonStyle(.plain)
+                }
+            }
+        }
+    }
+
+    private var catalogAlbumsDiscovery: some View {
+        VStack(alignment: .leading, spacing: 14) {
+            HStack(alignment: .top, spacing: 12) {
+                VStack(alignment: .leading, spacing: 4) {
+                    Text("Новые релизы")
+                        .font(VolnaFont.custom(22, weight: .semibold, relativeTo: .title2))
+                        .foregroundStyle(Color.volnaTextPrimary)
+                    Text("Реальные альбомы из открытого каталога")
+                        .font(VolnaFont.custom(13, weight: .regular, relativeTo: .footnote))
+                        .foregroundStyle(Color.volnaTextTertiary)
+                }
+                Spacer(minLength: 8)
+                NavigationLink {
+                    CatalogAlbumsView(title: "Все альбомы")
+                } label: {
+                    Text("Все")
+                        .font(VolnaFont.custom(14, weight: .semibold, relativeTo: .subheadline))
+                        .foregroundStyle(Color.volnaPurple)
+                }
+            }
+
+            ScrollView(.horizontal, showsIndicators: false) {
+                LazyHStack(alignment: .top, spacing: 14) {
+                    ForEach(Array(appState.catalog.recentAlbums.prefix(10))) { album in
+                        AlbumCard(album: album, width: 150)
+                    }
+                }
+                .padding(.vertical, 2)
+            }
+            .scrollClipDisabled()
+        }
+    }
+
+    private var catalogTracksDiscovery: some View {
+        let tracks = Array(appState.catalog.russianTracks.prefix(12))
+        return VStack(alignment: .leading, spacing: 14) {
+            HStack(alignment: .top, spacing: 12) {
+                VStack(alignment: .leading, spacing: 4) {
+                    Text("Русская волна")
+                        .font(VolnaFont.custom(22, weight: .semibold, relativeTo: .title2))
+                        .foregroundStyle(Color.volnaTextPrimary)
+                    Text("Открытые релизы на русском языке")
+                        .font(VolnaFont.custom(13, weight: .regular, relativeTo: .footnote))
+                        .foregroundStyle(Color.volnaTextTertiary)
+                }
+                Spacer(minLength: 8)
+                NavigationLink {
+                    CatalogTracksView(
+                        title: "Русская волна",
+                        subtitle: "Открытые релизы на русском языке",
+                        tracks: appState.catalog.russianTracks
+                    )
+                } label: {
+                    Text("Все")
+                        .font(VolnaFont.custom(14, weight: .semibold, relativeTo: .subheadline))
+                        .foregroundStyle(Color.volnaPurple)
+                }
+            }
+
+            ScrollView(.horizontal, showsIndicators: false) {
+                LazyHStack(alignment: .top, spacing: 14) {
+                    ForEach(tracks) { track in
+                        TrackCard(track: track, queue: tracks, width: 150)
+                    }
+                }
+                .padding(.vertical, 2)
+            }
+            .scrollClipDisabled()
         }
     }
 
@@ -225,23 +355,25 @@ struct SearchView: View {
                     .font(.system(size: 18, weight: .medium))
                     .foregroundStyle(Color.volnaPurple)
                 Text("Как работает поиск")
-                    .font(.system(size: 17, weight: .semibold, design: .default))
+                    .font(VolnaFont.custom(17, weight: .semibold, relativeTo: .headline))
                     .foregroundStyle(Color.volnaTextPrimary)
             }
-            Text("VOLNA ищет одновременно во всех включённых источниках и объединяет результаты. Лицензия и доступность указаны для каждого трека.")
-                .font(.system(size: 14, weight: .regular, design: .default))
+            Text("VOLNA ищет в открытом каталоге и во всех включённых источниках параллельно. Сначала показываются проверенные релизы с обложкой и лицензией, затем остальные результаты. Несуществующие треки не добавляются.")
+                .font(VolnaFont.custom(14, weight: .regular, relativeTo: .subheadline))
                 .foregroundStyle(Color.volnaTextSecondary)
                 .lineSpacing(3)
                 .fixedSize(horizontal: false, vertical: true)
 
             HStack {
                 Text("Активно: \(appState.settings.enabledProviderIDs.count) из \(MusicSourceCatalog.all.count)")
-                    .font(.system(size: 13, weight: .medium, design: .default))
+                    .font(VolnaFont.custom(13, weight: .medium, relativeTo: .footnote))
                     .foregroundStyle(Color.volnaTextTertiary)
                 Spacer()
-                NavigationLink { SourcesView() } label: {
+                NavigationLink {
+                    SourcesView()
+                } label: {
                     Text("Настроить")
-                        .font(.system(size: 14, weight: .semibold, design: .default))
+                        .font(VolnaFont.custom(14, weight: .semibold, relativeTo: .subheadline))
                         .foregroundStyle(Color.volnaPurple)
                 }
             }
@@ -253,80 +385,68 @@ struct SearchView: View {
 
     private var resultsContent: some View {
         VStack(alignment: .leading, spacing: 24) {
-            HStack(alignment: .center) {
-                Text("Результаты")
-                    .font(.system(size: 22, weight: .semibold, design: .default))
-                    .foregroundStyle(Color.volnaTextPrimary)
-                if service.isSearching {
-                    ProgressView().tint(Color.volnaPurple).scaleEffect(0.8)
-                }
-                Spacer()
-                if !service.tracks.isEmpty {
-                    Text("\(service.tracks.count)")
-                        .font(.system(size: 13, weight: .semibold, design: .default))
-                        .foregroundStyle(Color.volnaTextSecondary)
-                        .padding(.horizontal, 10)
-                        .padding(.vertical, 4)
-                        .background(Color.white.opacity(0.06), in: Capsule())
-                }
-            }
+            resultsHeader
 
             if !service.stats.isEmpty { providerStats }
             if !service.issues.isEmpty { issuesSection }
 
+            if !catalogTracks.isEmpty {
+                localTracksSection
+            }
+
+            if !playlistMatches.isEmpty {
+                playlistMatchesSection
+            }
+
+            if !catalogAlbums.isEmpty {
+                localAlbumsSection
+            }
+
+            if !catalogArtists.isEmpty {
+                localArtistsSection
+            }
+
             if !service.artists.isEmpty {
-                VStack(alignment: .leading, spacing: 14) {
-                    SectionHeader(title: "Исполнители")
-                    ScrollView(.horizontal, showsIndicators: false) {
-                        LazyHStack(spacing: 16) {
-                            ForEach(service.artists) { ArtistCard(artist: $0) }
-                        }
-                    }
-                    .scrollClipDisabled()
-                }
+                providerArtistsSection
             }
 
             if !service.albums.isEmpty {
-                VStack(alignment: .leading, spacing: 14) {
-                    SectionHeader(title: "Альбомы")
-                    ScrollView(.horizontal, showsIndicators: false) {
-                        LazyHStack(alignment: .top, spacing: 14) {
-                            ForEach(service.albums) { AlbumCard(album: $0) }
-                        }
-                    }
-                    .scrollClipDisabled()
-                }
+                providerAlbumsSection
             }
 
             if !service.tracks.isEmpty {
-                VStack(alignment: .leading, spacing: 12) {
-                    HStack {
-                        SectionHeader(title: "Треки")
-                        Spacer()
-                        if let first = service.tracks.first {
-                            Button { appState.play(first, in: service.tracks) } label: {
-                                Label("Играть", systemImage: "play.fill")
-                                    .font(.system(size: 14, weight: .semibold, design: .default))
-                            }
-                            .buttonStyle(VolnaPrimaryButtonStyle())
-                        }
-                    }
+                providerTracksSection
+            }
 
-                    VStack(spacing: 0) {
-                        ForEach(Array(service.tracks.enumerated()), id: \.element.id) { index, track in
-                            TrackRow(track: track, queue: service.tracks)
-                            if index < service.tracks.count - 1 {
-                                Divider()
-                                    .overlay(Color.volnaSeparator)
-                                    .padding(.leading, 68)
-                            }
-                        }
-                    }
-                    .padding(.vertical, 4)
-                    .volnaCard(cornerRadius: 20, padding: 8)
-                }
-            } else if !service.isSearching {
+            if !hasAnyResult && !service.isSearching {
                 noResults
+            }
+        }
+    }
+
+    private var resultsHeader: some View {
+        HStack(alignment: .center) {
+            VStack(alignment: .leading, spacing: 3) {
+                Text("Результаты")
+                    .font(VolnaFont.custom(22, weight: .semibold, relativeTo: .title2))
+                    .foregroundStyle(Color.volnaTextPrimary)
+                if hasAnyResult {
+                    Text("Найдено: \(resultCount)")
+                        .font(VolnaFont.custom(12, weight: .regular, relativeTo: .caption))
+                        .foregroundStyle(Color.volnaTextTertiary)
+                }
+            }
+            if service.isSearching {
+                ProgressView()
+                    .tint(Color.volnaPurple)
+                    .scaleEffect(0.8)
+                    .padding(.leading, 4)
+            }
+            Spacer()
+            if let completed = service.lastCompletedAt, !service.isSearching {
+                Text(completed.formatted(date: .omitted, time: .shortened))
+                    .font(VolnaFont.custom(11, weight: .medium, relativeTo: .caption2))
+                    .foregroundStyle(Color.volnaTextTertiary)
             }
         }
     }
@@ -338,10 +458,10 @@ struct SearchView: View {
                     HStack(spacing: 6) {
                         Circle().fill(color(for: stat.id)).frame(width: 6, height: 6)
                         Text(stat.name)
-                            .font(.system(size: 12, weight: .medium, design: .default))
+                            .font(VolnaFont.custom(12, weight: .medium, relativeTo: .caption))
                             .foregroundStyle(Color.volnaTextSecondary)
                         Text("\(stat.count)")
-                            .font(.system(size: 12, weight: .semibold, design: .default))
+                            .font(VolnaFont.custom(12, weight: .semibold, relativeTo: .caption))
                             .foregroundStyle(Color.volnaTextPrimary)
                     }
                     .padding(.horizontal, 12)
@@ -353,16 +473,149 @@ struct SearchView: View {
         .scrollClipDisabled()
     }
 
+    private var localTracksSection: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            HStack(alignment: .center) {
+                VStack(alignment: .leading, spacing: 3) {
+                    Text("В каталоге VOLNA")
+                        .font(VolnaFont.custom(20, weight: .semibold, relativeTo: .title3))
+                        .foregroundStyle(Color.volnaTextPrimary)
+                    Text("Проверенные открытые релизы")
+                        .font(VolnaFont.custom(12, weight: .regular, relativeTo: .caption))
+                        .foregroundStyle(Color.volnaTextTertiary)
+                }
+                Spacer()
+                Button {
+                    guard let first = catalogTracks.first else { return }
+                    appState.play(first, in: catalogTracks)
+                } label: {
+                    Label("Играть", systemImage: "play.fill")
+                }
+                .buttonStyle(VolnaPrimaryButtonStyle())
+            }
+
+            VStack(spacing: 0) {
+                ForEach(Array(catalogTracks.enumerated()), id: \.element.id) { index, track in
+                    TrackRow(track: track, queue: catalogTracks)
+                    if index < catalogTracks.count - 1 {
+                        Divider()
+                            .overlay(Color.volnaSeparator)
+                            .padding(.leading, 68)
+                    }
+                }
+            }
+            .padding(.vertical, 4)
+            .volnaCard(cornerRadius: 20, padding: 8)
+        }
+    }
+
+    private var playlistMatchesSection: some View {
+        VStack(alignment: .leading, spacing: 14) {
+            SectionHeader(title: "Ваши плейлисты", subtitle: "Совпадения в медиатеке")
+            ScrollView(.horizontal, showsIndicators: false) {
+                LazyHStack(alignment: .top, spacing: 14) {
+                    ForEach(playlistMatches) { playlist in
+                        PlaylistCard(playlist: playlist, width: 142)
+                    }
+                }
+                .padding(.vertical, 2)
+            }
+            .scrollClipDisabled()
+        }
+    }
+
+    private var localAlbumsSection: some View {
+        VStack(alignment: .leading, spacing: 14) {
+            SectionHeader(title: "Альбомы в каталоге", subtitle: "Совпадения по названию или исполнителю")
+            ScrollView(.horizontal, showsIndicators: false) {
+                LazyHStack(alignment: .top, spacing: 14) {
+                    ForEach(catalogAlbums) { album in
+                        AlbumCard(album: album, width: 142)
+                    }
+                }
+                .padding(.vertical, 2)
+            }
+            .scrollClipDisabled()
+        }
+    }
+
+    private var localArtistsSection: some View {
+        VStack(alignment: .leading, spacing: 14) {
+            SectionHeader(title: "Исполнители в каталоге", subtitle: "Реальные имена из открытых релизов")
+            ScrollView(.horizontal, showsIndicators: false) {
+                LazyHStack(alignment: .top, spacing: 16) {
+                    ForEach(catalogArtists) { artist in
+                        ArtistCard(artist: artist, width: 84)
+                    }
+                }
+                .padding(.vertical, 2)
+            }
+            .scrollClipDisabled()
+        }
+    }
+
+    private var providerArtistsSection: some View {
+        VStack(alignment: .leading, spacing: 14) {
+            SectionHeader(title: "Исполнители в источниках")
+            ScrollView(.horizontal, showsIndicators: false) {
+                LazyHStack(spacing: 16) {
+                    ForEach(service.artists) { ArtistCard(artist: $0, width: 84) }
+                }
+            }
+            .scrollClipDisabled()
+        }
+    }
+
+    private var providerAlbumsSection: some View {
+        VStack(alignment: .leading, spacing: 14) {
+            SectionHeader(title: "Альбомы в источниках")
+            ScrollView(.horizontal, showsIndicators: false) {
+                LazyHStack(alignment: .top, spacing: 14) {
+                    ForEach(service.albums) { AlbumCard(album: $0, width: 142) }
+                }
+            }
+            .scrollClipDisabled()
+        }
+    }
+
+    private var providerTracksSection: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            HStack {
+                SectionHeader(title: "Треки из источников")
+                Spacer()
+                if let first = service.tracks.first {
+                    Button { appState.play(first, in: service.tracks) } label: {
+                        Label("Играть", systemImage: "play.fill")
+                    }
+                    .buttonStyle(VolnaPrimaryButtonStyle())
+                }
+            }
+
+            VStack(spacing: 0) {
+                ForEach(Array(service.tracks.enumerated()), id: \.element.id) { index, track in
+                    TrackRow(track: track, queue: service.tracks)
+                    if index < service.tracks.count - 1 {
+                        Divider()
+                            .overlay(Color.volnaSeparator)
+                            .padding(.leading, 68)
+                    }
+                }
+            }
+            .padding(.vertical, 4)
+            .volnaCard(cornerRadius: 20, padding: 8)
+        }
+    }
+
     private var issuesSection: some View {
         VStack(alignment: .leading, spacing: 10) {
             Button {
-                withAnimation(.easeInOut(duration: 0.2)) { showIssues.toggle() }
+                withAnimation(reduceMotion ? nil : .easeInOut(duration: 0.2)) { showIssues.toggle() }
             } label: {
                 HStack(spacing: 8) {
                     Image(systemName: "exclamationmark.triangle.fill")
                         .foregroundStyle(Color.volnaWarning)
                     Text("Недоступные источники: \(service.issues.count)")
-                        .font(.system(size: 14, weight: .medium, design: .default))
+                        .font(VolnaFont.custom(14, weight: .medium, relativeTo: .subheadline))
                         .foregroundStyle(Color.volnaTextSecondary)
                     Spacer()
                     Image(systemName: showIssues ? "chevron.up" : "chevron.down")
@@ -384,7 +637,7 @@ struct SearchView: View {
         EmptyStateView(
             icon: "magnifyingglass",
             title: "Ничего не найдено",
-            message: "Попробуйте другой запрос или измените фильтры. Некоторые каталоги лучше ищут по названию на латинице.",
+            message: "Попробуйте другой запрос или измените фильтры. VOLNA не добавляет несуществующие треки, чтобы заполнить выдачу.",
             actionTitle: filters.language == "ru" ? "Искать на всех языках" : "Открыть источники",
             action: {
                 if filters.language == "ru" { filters.language = nil }
@@ -397,8 +650,8 @@ struct SearchView: View {
         VStack(alignment: .leading, spacing: 16) {
             HStack(spacing: 12) {
                 ProgressView().tint(Color.volnaPurple)
-                Text("Ищем во всех источниках…")
-                    .font(.system(size: 15, weight: .regular, design: .default))
+                Text("Ищем в открытом каталоге и источниках…")
+                    .font(VolnaFont.custom(15, weight: .regular, relativeTo: .body))
                     .foregroundStyle(Color.volnaTextSecondary)
             }
             .padding(.vertical, 8)
@@ -416,6 +669,89 @@ struct SearchView: View {
             }
         }
         .redacted(reason: .placeholder)
+    }
+
+    // MARK: - Local matching
+
+    private var catalogTracks: [Track] {
+        guard trimmedQuery.count >= 2, !queryTokens.isEmpty else { return [] }
+        var items = appState.catalog.searchLocal(trimmedQuery, limit: 40)
+
+        if filters.language == "ru" {
+            items = items.filter(\.isRussian)
+        }
+        if let genreID = filters.genre, let option = GenreCatalog.option(for: genreID) {
+            items = items.filter { track in
+                let haystack = "\(track.genre ?? "") \(track.title) \(track.artist) \(track.album ?? "")"
+                    .lowercased()
+                return option.keywords.contains { haystack.contains($0.lowercased()) }
+            }
+        }
+
+        let providerKeys = Set(service.tracks.map { CatalogQuality.dedupKey(for: $0) })
+        return items
+            .filter { !providerKeys.contains(CatalogQuality.dedupKey(for: $0)) }
+            .prefix(8)
+            .map { $0 }
+    }
+
+    private var catalogAlbums: [Album] {
+        guard trimmedQuery.count >= 2, !queryTokens.isEmpty else { return [] }
+        return appState.catalog.albums
+            .filter { matches("\($0.title) \($0.artist)") }
+            .prefix(8)
+            .map { $0 }
+    }
+
+    private var catalogArtists: [Artist] {
+        guard trimmedQuery.count >= 2, !queryTokens.isEmpty else { return [] }
+        return appState.catalog.artists
+            .filter { matches($0.name) }
+            .prefix(8)
+            .map { $0 }
+    }
+
+    private var playlistMatches: [Playlist] {
+        guard trimmedQuery.count >= 2, !queryTokens.isEmpty else { return [] }
+        return appState.library.playlists
+            .filter { matches($0.title) }
+            .prefix(6)
+            .map { $0 }
+    }
+
+    private func matches(_ value: String) -> Bool {
+        let haystack = CatalogQuality.normalized(value)
+        guard !haystack.isEmpty else { return false }
+        return queryTokens.allSatisfy { haystack.contains($0) }
+    }
+
+    private var hasAnyResult: Bool {
+        service.hasResults
+            || !catalogTracks.isEmpty
+            || !catalogAlbums.isEmpty
+            || !catalogArtists.isEmpty
+            || !playlistMatches.isEmpty
+    }
+
+    private var resultCount: Int {
+        service.tracks.count
+            + service.albums.count
+            + service.artists.count
+            + catalogTracks.count
+            + catalogAlbums.count
+            + catalogArtists.count
+            + playlistMatches.count
+    }
+
+    private func applySuggestion(_ value: String) {
+        query = value
+        appState.searchHistory.record(value)
+        isFocused = false
+    }
+
+    private func recordCurrentQuery() {
+        guard trimmedQuery.count >= 2 else { return }
+        appState.searchHistory.record(trimmedQuery)
     }
 
     private func color(for providerID: String) -> Color {

@@ -14,10 +14,15 @@ final class AppState {
     let directProvider: DirectMusicProvider
     let providerRegistry: ProviderRegistry
     let searchService: SearchService
+    let searchHistory: SearchHistoryStore
+    let catalog: CatalogService
 
     // UI state
     var selectedTab: AppTab = .home
     var isPlayerPresented = false
+    /// Измеренная высота плавающих нижних контролов (мини-плеер + таб-бар).
+    /// Используется для safe-area inset контента без магических констант.
+    var bottomControlsHeight: CGFloat = 0
 
     // Home feed
     private(set) var homeSections: [HomeSection] = []
@@ -31,8 +36,10 @@ final class AppState {
         let lyrics = LyricsService()
         let directStore = DirectLinkStore()
         let directProvider = DirectMusicProvider(links: directStore.links)
+        let jamendo = JamendoProvider()
+        let catalog = CatalogService(provider: jamendo)
         let registry = ProviderRegistry(providers: [
-            JamendoProvider(),
+            jamendo,
             InternetArchiveProvider(),
             WikimediaCommonsProvider(),
             OpenverseProvider(),
@@ -47,6 +54,8 @@ final class AppState {
         self.directProvider = directProvider
         self.providerRegistry = registry
         self.searchService = SearchService(providerRegistry: registry)
+        self.searchHistory = SearchHistoryStore()
+        self.catalog = catalog
     }
 
     // MARK: - Playback helpers
@@ -92,114 +101,57 @@ final class AppState {
         isHomeLoading = true
         homeError = nil
 
-        async let russian = providerTracks(
-            providerID: "jamendo",
-            query: "русский рок",
-            limit: 20
-        )
-        async let russianAlternative = providerTracks(
-            providerID: "internet_archive",
-            query: "русский рок",
-            limit: 12
-        )
-        async let russianIndie = providerTracks(
-            providerID: "jamendo",
-            query: "russian indie",
-            limit: 16
-        )
-        async let folk = providerTracks(
-            providerID: "internet_archive",
-            query: "russian folk",
-            limit: 12
-        )
-        async let classical = providerTracks(
-            providerID: "wikimedia_commons",
-            query: "russian classical",
-            limit: 12
-        )
-        async let freeScene = providerTracks(
-            providerID: "jamendo",
-            query: "indie",
-            limit: 16
-        )
+        if force {
+            await catalog.refresh(force: true)
+        } else {
+            await catalog.loadIfNeeded()
+        }
 
-        let results = await (russian, russianAlternative, russianIndie, folk, classical, freeScene)
-        let russianCombined = SearchMerger.merge(
-            tracks: results.0 + results.1 + results.2,
-            query: "русский рок"
-        ).filter { $0.isRussian && !$0.playableStreams.isEmpty }
-
-        var sections: [HomeSection] = []
-        if !russianCombined.isEmpty {
-            sections.append(
-                HomeSection(
-                    id: "russian",
-                    title: "Русская волна",
-                    subtitle: "Открытые записи на русском языке",
-                    tracks: Array(russianCombined.prefix(14)),
-                    colors: [Color(hex: "7C5CFF"), Color(hex: "FF5CA8")]
-                )
-            )
-        }
-        if !results.3.isEmpty {
-            sections.append(
-                HomeSection(
-                    id: "archive",
-                    title: "Архивы и фольклор",
-                    subtitle: "Internet Archive: только элементы с открытой лицензией",
-                    tracks: Array(results.3.prefix(12)),
-                    colors: [Color(hex: "3AA0FF"), Color(hex: "6EE7F9")]
-                )
-            )
-        }
-        if !results.4.isEmpty {
-            sections.append(
-                HomeSection(
-                    id: "classical",
-                    title: "Классика и общественное достояние",
-                    subtitle: "Wikimedia Commons: свободные аудиозаписи",
-                    tracks: Array(results.4.prefix(12)),
-                    colors: [Color(hex: "F5B84B"), Color(hex: "FF7A59")]
-                )
-            )
-        }
-        if !results.5.isEmpty {
-            sections.append(
-                HomeSection(
-                    id: "indie",
-                    title: "Свободная сцена",
-                    subtitle: "Независимые исполнители Jamendo",
-                    tracks: Array(results.5.prefix(14)),
-                    colors: [Color(hex: "27D796"), Color(hex: "3AA0FF")]
-                )
+        homeSections = catalog.sections.map { section in
+            HomeSection(
+                id: section.id,
+                title: section.title,
+                subtitle: section.subtitle,
+                tracks: section.tracks,
+                colors: colors(for: section.id)
             )
         }
 
-        homeSections = sections
-        if sections.isEmpty {
-            homeError = "Не удалось загрузить подборки. Проверьте соединение и включённые источники."
+        if homeSections.isEmpty {
+            homeError = catalog.error
+                ?? "Каталог пока пуст. Проверьте соединение и повторите попытку."
         }
         isHomeLoading = false
     }
 
-    private func providerTracks(
-        providerID: String,
-        query: String,
-        limit: Int
-    ) async -> [Track] {
-        guard settings.isProviderEnabled(providerID),
-              let provider = providerRegistry.provider(for: providerID) else {
-            return []
-        }
-        do {
-            let result = try await provider.search(query: query, type: .track)
-            return Array(
-                result.tracks
-                    .filter { !$0.playableStreams.isEmpty }
-                    .prefix(limit)
+    func refreshCatalog() async {
+        await catalog.refresh(force: true)
+        homeSections = catalog.sections.map { section in
+            HomeSection(
+                id: section.id,
+                title: section.title,
+                subtitle: section.subtitle,
+                tracks: section.tracks,
+                colors: colors(for: section.id)
             )
-        } catch {
-            return []
+        }
+        homeError = homeSections.isEmpty ? catalog.error : nil
+    }
+
+    private func colors(for sectionID: String) -> [Color] {
+        switch sectionID {
+        case "russian": return [Color(hex: "7B61FF"), Color(hex: "FF5C9D")]
+        case "new": return [Color(hex: "4C9BFF"), Color(hex: "5FE7FF")]
+        case "popular": return [Color(hex: "7B61FF"), Color(hex: "4C9BFF")]
+        case "rap": return [Color(hex: "FF7A3D"), Color(hex: "FF5C9D")]
+        case "rock": return [Color(hex: "FF5F5F"), Color(hex: "FFB63B")]
+        case "pop": return [Color(hex: "FF5C9D"), Color(hex: "7B61FF")]
+        case "electronic": return [Color(hex: "32E6A0"), Color(hex: "4C9BFF")]
+        case "indie": return [Color(hex: "4C9BFF"), Color(hex: "7B61FF")]
+        case "folk": return [Color(hex: "FFB63B"), Color(hex: "32E6A0")]
+        case "jazz": return [Color(hex: "FFB63B"), Color(hex: "FF7A3D")]
+        case "classical": return [Color(hex: "FFB63B"), Color(hex: "FF5F5F")]
+        default: return [Color(hex: "7B61FF"), Color(hex: "4C9BFF")]
         }
     }
 

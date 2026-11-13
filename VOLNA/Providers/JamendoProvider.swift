@@ -114,6 +114,55 @@ actor JamendoProvider: MusicProvider {
         )
     }
 
+    // MARK: - Catalog discovery
+
+    /// Загружает страницу каталога Jamendo для редакционных подборок.
+    /// Это не поиск по запросу пользователя, а реальные релизы из открытого
+    /// каталога с лицензией и прямым потоком.
+    func discoveryTracks(
+        language: String? = nil,
+        tag: String? = nil,
+        search: String? = nil,
+        order: String = "popularity_month",
+        offset: Int = 0,
+        limit: Int = 100
+    ) async throws -> [Track] {
+        var parameters: [String: String] = [
+            "limit": "\(min(max(limit, 1), 200))",
+            "offset": "\(max(offset, 0))",
+            "imagesize": "600",
+            "audioformat": "mp32",
+            "include": "licenses musicinfo",
+            "order": order
+        ]
+        if let language, !language.isEmpty { parameters["lang"] = language }
+        if let tag, !tag.isEmpty { parameters["tags"] = tag }
+        if let search, !search.isEmpty { parameters["search"] = search }
+
+        let url = buildURL(endpoint: "/tracks/", parameters: parameters)
+        let response: JamendoResponse<JamendoTrack> = try await performRequest(url)
+        return response.results.compactMap { mapTrack($0) }
+    }
+
+    /// Загружает исполнителей Jamendo для витрины «Исполнители».
+    func discoveryArtists(
+        order: String = "popularity_month",
+        offset: Int = 0,
+        limit: Int = 100
+    ) async throws -> [Artist] {
+        let url = buildURL(
+            endpoint: "/artists/",
+            parameters: [
+                "limit": "\(min(max(limit, 1), 200))",
+                "offset": "\(max(offset, 0))",
+                "imagesize": "600",
+                "order": order
+            ]
+        )
+        let response: JamendoResponse<JamendoArtist> = try await performRequest(url)
+        return response.results.map(mapArtist)
+    }
+
     func healthCheck() async -> ProviderHealth {
         let start = ContinuousClock.now
         do {
@@ -226,17 +275,18 @@ actor JamendoProvider: MusicProvider {
             : nil
         let isDownloadAllowed = data.audiodownloadAllowed == true && downloadURL != nil
 
+        let title = cleanText(data.name)
         let language = LanguageDetector.detect(
             declared: data.musicinfo?.lang,
-            texts: [data.name, data.artistName, data.albumName ?? albumName]
+            texts: [title, data.artistName, data.albumName ?? albumName]
         )
         let genre = data.musicinfo?.tags?.genres?.first(where: { !$0.isEmpty })
-        let artistName = data.artistName ?? "Неизвестный исполнитель"
-        let albumTitle = albumName ?? data.albumName
+        let artistName = cleanText(data.artistName ?? "Неизвестный исполнитель")
+        let albumTitle = cleanText(albumName ?? data.albumName)
         let artwork = urlOrNil(data.image ?? data.albumImage ?? artworkURL)
 
         let attribution = [
-            "«\(data.name)» — \(artistName)",
+            "«\(title)» — \(artistName)",
             albumTitle.map { "альбом «\($0)»" },
             "источник: Jamendo",
             "лицензия: \(license.displayName)"
@@ -255,7 +305,7 @@ actor JamendoProvider: MusicProvider {
 
         return Track(
             id: "\(id)_\(data.id)",
-            title: data.name,
+            title: title,
             artist: artistName,
             album: albumTitle,
             artworkURL: artwork,
@@ -266,8 +316,8 @@ actor JamendoProvider: MusicProvider {
             explicit: false,
             availableStreams: [stream],
             language: language,
-            originalTitle: data.name,
-            transliteratedTitle: LanguageDetector.isCyrillic(data.name) ? RussianText.transliterate(data.name) : nil,
+            originalTitle: title,
+            transliteratedTitle: LanguageDetector.isCyrillic(title) ? RussianText.transliterate(title) : nil,
             license: license,
             licenseURL: licenseURL,
             attribution: attribution,
@@ -276,7 +326,10 @@ actor JamendoProvider: MusicProvider {
             downloadURL: downloadURL,
             sourcePageURL: urlOrNil(data.shareurl) ?? URL(string: "https://www.jamendo.com/track/\(data.id)"),
             region: nil,
-            genre: genre
+            genre: genre,
+            releaseDate: parseDate(data.releaseDate),
+            trackNumber: data.trackNumber ?? data.position,
+            albumID: data.albumID
         )
     }
 
@@ -345,6 +398,20 @@ actor JamendoProvider: MusicProvider {
         default:
             throw ProviderError.invalidResponse("HTTP \(http.statusCode)")
         }
+    }
+
+    private func cleanText(_ value: String) -> String {
+        value
+            .replacingOccurrences(of: "&quot;", with: "\"")
+            .replacingOccurrences(of: "&#39;", with: "'")
+            .replacingOccurrences(of: "&apos;", with: "'")
+            .replacingOccurrences(of: "&amp;", with: "&")
+            .replacingOccurrences(of: "&lt;", with: "<")
+            .replacingOccurrences(of: "&gt;", with: ">")
+            .replacingOccurrences(of: "&nbsp;", with: " ")
+            .split(whereSeparator: { $0.isWhitespace })
+            .joined(separator: " ")
+            .trimmingCharacters(in: .whitespacesAndNewlines)
     }
 
     private func urlOrNil(_ string: String?) -> URL? {
@@ -425,12 +492,16 @@ private struct JamendoTrack: Decodable {
     let artistName: String?
     let albumName: String?
     let albumImage: String?
+    let albumID: String?
     let image: String?
     let audio: String?
     let audiodownload: String?
     let audiodownloadAllowed: Bool?
     let licenseCCURL: String?
     let shareurl: String?
+    let releaseDate: String?
+    let position: Int?
+    let trackNumber: Int?
     let musicinfo: JamendoMusicInfo?
 
     enum CodingKeys: String, CodingKey {
@@ -440,12 +511,16 @@ private struct JamendoTrack: Decodable {
         case artistName = "artist_name"
         case albumName = "album_name"
         case albumImage = "album_image"
+        case albumID = "album_id"
         case image
         case audio
         case audiodownload
         case audiodownloadAllowed = "audiodownload_allowed"
         case licenseCCURL = "license_ccurl"
         case shareurl
+        case releaseDate = "releasedate"
+        case position
+        case trackNumber = "track_number"
         case musicinfo
     }
 }

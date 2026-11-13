@@ -135,16 +135,27 @@ struct ArtistView: View {
         isLoading = true
         errorMessage = nil
 
+        let artistName = artist.name
+        let normalizedArtist = RussianText.normalizedKey(artistName)
+        let localTracks = appState.catalog.tracks.filter { track in
+            let name = RussianText.normalizedKey(track.artist)
+            return name == normalizedArtist
+                || name.contains(normalizedArtist)
+                || normalizedArtist.contains(name)
+        }
+
         let providers = appState.providerRegistry.searchableProviders.filter {
             appState.settings.isProviderEnabled($0.id)
         }
         guard !providers.isEmpty else {
+            tracks = Array(localTracks.prefix(60))
+            if tracks.isEmpty {
+                errorMessage = "Все источники отключены. Включите хотя бы один в настройках."
+            }
             isLoading = false
-            errorMessage = "Все источники отключены. Включите хотя бы один в настройках."
             return
         }
 
-        let artistName = artist.name
         let collected = await withTaskGroup(of: [Track].self, returning: [Track].self) { group in
             for provider in providers {
                 group.addTask {
@@ -163,8 +174,7 @@ struct ArtistView: View {
             return all
         }
 
-        let merged = SearchMerger.merge(tracks: collected, query: artistName)
-        let normalizedArtist = RussianText.normalizedKey(artistName)
+        let merged = SearchMerger.merge(tracks: localTracks + collected, query: artistName)
         let filtered = merged.filter { track in
             let name = RussianText.normalizedKey(track.artist)
             return name == normalizedArtist

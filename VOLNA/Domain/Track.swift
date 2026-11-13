@@ -32,6 +32,9 @@ struct Track: Identifiable, Codable, Hashable, Sendable {
     let sourcePageURL: URL?
     let region: String?
     let genre: String?
+    let releaseDate: Date?
+    let trackNumber: Int?
+    let albumID: String?
 
     init(
         id: String,
@@ -56,7 +59,10 @@ struct Track: Identifiable, Codable, Hashable, Sendable {
         downloadURL: URL? = nil,
         sourcePageURL: URL? = nil,
         region: String? = nil,
-        genre: String? = nil
+        genre: String? = nil,
+        releaseDate: Date? = nil,
+        trackNumber: Int? = nil,
+        albumID: String? = nil
     ) {
         self.id = id
         self.title = title
@@ -81,6 +87,9 @@ struct Track: Identifiable, Codable, Hashable, Sendable {
         self.sourcePageURL = sourcePageURL
         self.region = region
         self.genre = genre
+        self.releaseDate = releaseDate
+        self.trackNumber = trackNumber
+        self.albumID = albumID
     }
 
     var providerDisplayName: String {

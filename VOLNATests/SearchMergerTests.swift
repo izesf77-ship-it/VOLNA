@@ -122,6 +122,30 @@ final class SearchMergerTests: XCTestCase {
         XCTAssertTrue(merged.first?.isRussian == true)
     }
 
+    func testCoverVersionRanksBelowOriginal() {
+        let original = track(
+            id: "original",
+            providerID: "jamendo",
+            title: "Песня",
+            artist: "Артист",
+            duration: 200,
+            stream: "https://example.com/original.mp3"
+        )
+        let cover = track(
+            id: "cover",
+            providerID: "jamendo",
+            title: "Песня (Cover)",
+            artist: "Артист",
+            duration: 200,
+            stream: "https://example.com/cover.mp3"
+        )
+
+        XCTAssertGreaterThan(
+            SearchMerger.rankScore(original, query: "Артист"),
+            SearchMerger.rankScore(cover, query: "Артист")
+        )
+    }
+
     func testEmptyInput() {
         XCTAssertTrue(SearchMerger.merge(tracks: [], query: "anything").isEmpty)
     }

@@ -11,6 +11,7 @@ struct SettingsView: View {
         ScrollView(showsIndicators: false) {
             VStack(alignment: .leading, spacing: 24) {
                 header
+                catalogCard
                 sourcesCard
                 behaviorCard
                 directLinksCard
@@ -70,6 +71,93 @@ struct SettingsView: View {
         }
         .frame(maxWidth: .infinity, alignment: .leading)
         .padding(.top, 4)
+    }
+
+    private var catalogCard: some View {
+        VStack(alignment: .leading, spacing: 14) {
+            HStack(alignment: .top, spacing: 12) {
+                Image(systemName: "waveform")
+                    .font(.system(size: 15, weight: .semibold))
+                    .foregroundStyle(Color.volnaMint)
+                    .frame(width: 34, height: 34)
+                    .background(Color.volnaMint.opacity(0.12))
+                    .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
+
+                VStack(alignment: .leading, spacing: 3) {
+                    Text("Каталог Jamendo")
+                        .font(VolnaFont.custom(16, weight: .semibold, relativeTo: .headline))
+                        .foregroundStyle(Color.volnaTextPrimary)
+                    Text("Открытые релизы с прямой лицензией на поток")
+                        .font(VolnaFont.custom(12, weight: .regular, relativeTo: .caption))
+                        .foregroundStyle(Color.volnaTextTertiary)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+
+                Spacer(minLength: 8)
+
+                if appState.catalog.isLoading {
+                    ProgressView()
+                        .tint(Color.volnaPurple)
+                        .scaleEffect(0.85)
+                        .frame(width: 34, height: 34)
+                } else {
+                    Text("\(appState.catalog.tracks.count)")
+                        .font(.system(size: 18, weight: .bold, design: .rounded))
+                        .foregroundStyle(Color.volnaTextPrimary)
+                }
+            }
+
+            HStack(spacing: 10) {
+                CatalogMetric(value: appState.catalog.russianTrackCount, title: "на русском")
+                CatalogMetric(value: appState.catalog.albums.count, title: "релизов")
+                CatalogMetric(value: appState.catalog.artists.count, title: "исполнителей")
+            }
+
+            Divider().overlay(Color.white.opacity(0.05))
+
+            HStack(spacing: 10) {
+                VStack(alignment: .leading, spacing: 3) {
+                    Text(catalogUpdatedText)
+                        .font(VolnaFont.custom(12, weight: .medium, relativeTo: .caption))
+                        .foregroundStyle(Color.volnaTextSecondary)
+                    Text("Кэш: JSON в Documents/VOLNA · без сервера")
+                        .font(VolnaFont.custom(10, weight: .regular, relativeTo: .caption2))
+                        .foregroundStyle(Color.volnaTextTertiary)
+                }
+
+                Spacer(minLength: 8)
+
+                Button {
+                    Task { await appState.refreshCatalog() }
+                } label: {
+                    Label("Обновить", systemImage: "arrow.triangle.2.circlepath")
+                        .font(VolnaFont.custom(13, weight: .semibold, relativeTo: .footnote))
+                        .foregroundStyle(Color.volnaTextPrimary)
+                        .padding(.horizontal, 14)
+                        .frame(minHeight: 38)
+                        .background(Color.white.opacity(0.08), in: Capsule())
+                }
+                .buttonStyle(.plain)
+                .disabled(appState.catalog.isLoading)
+                .opacity(appState.catalog.isLoading ? 0.55 : 1)
+                .accessibilityLabel("Обновить каталог")
+            }
+
+            if let error = appState.catalog.error {
+                Text(error)
+                    .font(VolnaFont.custom(12, weight: .regular, relativeTo: .caption))
+                    .foregroundStyle(Color.volnaWarning)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+        }
+        .volnaCard(cornerRadius: 20, padding: 16)
+    }
+
+    private var catalogUpdatedText: String {
+        guard let date = appState.catalog.lastUpdated else {
+            return "Каталог ещё не загружен"
+        }
+        return "Обновлено \(date.formatted(date: .abbreviated, time: .shortened))"
     }
 
     private var sourcesCard: some View {
@@ -282,6 +370,28 @@ struct SettingsView: View {
         case "direct": return .volnaCyan
         default: return .volnaTextTertiary
         }
+    }
+}
+
+private struct CatalogMetric: View {
+    let value: Int
+    let title: String
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 3) {
+            Text("\(value)")
+                .font(.system(size: 16, weight: .semibold, design: .rounded))
+                .foregroundStyle(Color.volnaTextPrimary)
+            Text(title)
+                .font(VolnaFont.custom(10, weight: .medium, relativeTo: .caption2))
+                .foregroundStyle(Color.volnaTextTertiary)
+                .lineLimit(1)
+                .minimumScaleFactor(0.8)
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(.horizontal, 10)
+        .padding(.vertical, 9)
+        .background(Color.white.opacity(0.04), in: RoundedRectangle(cornerRadius: 12, style: .continuous))
     }
 }
 

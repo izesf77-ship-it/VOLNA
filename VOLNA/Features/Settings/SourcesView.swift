@@ -34,6 +34,30 @@ struct SourcesView: View {
         UnintegratedSource(
             name: "OpenGameArt",
             reason: "Открытые аудио CC0/CC-BY есть, но официального API нет. Массовый парсинг HTML не реализован."
+        ),
+        UnintegratedSource(
+            name: "Яндекс Музыка",
+            reason: "Нет публичного API, разрешающего сторонним плеерам полный стриминг. Закрытые методы требуют OAuth и договора с правообладателями, поэтому VOLNA их не использует и не обходит."
+        ),
+        UnintegratedSource(
+            name: "VK Музыка",
+            reason: "Публичный Audio API закрыт для новых сторонних клиентов. Полное воспроизведение требует лицензионного соглашения с VK и правообладателями; доступа к такому каталогу у VOLNA нет."
+        ),
+        UnintegratedSource(
+            name: "Zaycev.net",
+            reason: "У сайта нет публичного API для сторонних плееров, а музыка лицензирована для его собственного сервиса. Hotlink и автоматический разбор страниц не используются."
+        ),
+        UnintegratedSource(
+            name: "SoundCloud",
+            reason: "API требует регистрации приложения и разрешения авторов. Большая часть треков имеет all rights reserved; публичный stream endpoint не даёт права на стороннее распространение."
+        ),
+        UnintegratedSource(
+            name: "Deezer",
+            reason: "Публичный API отдаёт метаданные и 30-секундные превью. Полный поток доступен только партнёрам через Deezer SDK и авторизацию пользователя; свободного каталога для VOLNA там нет."
+        ),
+        UnintegratedSource(
+            name: "Apple Music / iTunes",
+            reason: "iTunes Search API даёт метаданные и 30-секундные превью, а Apple Music API требует MusicKit, developer token и подписку пользователя. Использовать его как бесплатный каталог нельзя."
         )
     ]
 
