@@ -273,7 +273,7 @@ actor AudiusProvider: MusicProvider {
         // Gated tracks (stream_conditions) require payment/authorization we do not bypass.
         guard data.isStreamable != false, data.streamConditions == nil else { return nil }
 
-        let title = clean(data.title)
+        let title = clean(data.title ?? "")
         let artist = clean(data.user?.name ?? data.user?.handle ?? "Неизвестный исполнитель")
         guard !title.isEmpty else { return nil }
 

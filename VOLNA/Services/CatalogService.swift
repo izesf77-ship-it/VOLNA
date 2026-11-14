@@ -48,7 +48,7 @@ final class CatalogService {
     }
 
     // Convenience for existing call sites/tests that may pass Jamendo directly.
-    init(provider: JamendoProvider) {
+    convenience init(provider: JamendoProvider) {
         self.init(providers: [provider], enabledProviderIDs: { ["jamendo"] })
     }
 
