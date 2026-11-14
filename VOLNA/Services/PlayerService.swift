@@ -279,7 +279,6 @@ final class PlayerService {
     // MARK: - Loading
 
     private var streamAttemptIndex: Int = 0
-    private var isAdvancingAfterFailure = false
 
     private func loadCurrentTrack(autoplay: Bool) {
         guard let track = currentTrack else { return }

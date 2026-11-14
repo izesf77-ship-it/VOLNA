@@ -282,7 +282,10 @@ final class CatalogService {
         ) {
             var local = Set<String>()
             let picked = tracks.filter { track in
-                if featuredOnly ? !CatalogQuality.isFeatured(track) : !CatalogQuality.isDisplayable(track) { return false }
+                let qualifies = featuredOnly
+                    ? CatalogQuality.isFeatured(track)
+                    : CatalogQuality.isDisplayable(track)
+                guard qualifies else { return false }
                 let key = CatalogQuality.dedupKey(for: track)
                 guard local.insert(key).inserted, !excluding.contains(key) else { return false }
                 return true
@@ -319,11 +322,6 @@ final class CatalogService {
         let albums = makeAlbums(from: allTracks.filter { $0.album != nil })
         let artists = makeArtists(from: allTracks)
 
-        if !albums.isEmpty {
-            let albumTracks = albums.prefix(20).compactMap { $0.tracks.first ?? allTracks.first(where: { $0.album == $1Title($0: $1, album: $0) }) }
-            // Simpler: represent albums section via representative playable/displayable tracks from albums.
-        }
-
         // Album/artist sections as track-backed editorial rows for navigation context.
         let albumRepresentative = uniqueTracks(Array(albums.prefix(24).compactMap { $0.tracks.first }))
         if !albumRepresentative.isEmpty {
@@ -342,8 +340,6 @@ final class CatalogService {
             artists: artists
         )
     }
-
-    private func $1Title($0: Track, album: Track) -> Bool { false } // unused helper placeholder avoided
 
     private func merged(_ tracks: [Track], preferRussian: Bool) -> [Track] {
         SearchMerger.merge(tracks: tracks, query: "", preferRussian: preferRussian)

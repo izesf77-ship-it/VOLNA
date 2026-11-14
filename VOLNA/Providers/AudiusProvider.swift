@@ -270,14 +270,15 @@ actor AudiusProvider: MusicProvider {
     private func mapTrack(_ data: AudiusTrack) -> Track? {
         let id = data.id
         guard !id.isEmpty else { return nil }
-        guard data.isStreamable != false else { return nil }
-        if data.streamConditions != nil && data.isStreamable == false { return nil }
+        // Gated tracks (stream_conditions) require payment/authorization we do not bypass.
+        guard data.isStreamable != false, data.streamConditions == nil else { return nil }
 
         let title = clean(data.title)
         let artist = clean(data.user?.name ?? data.user?.handle ?? "Неизвестный исполнитель")
         guard !title.isEmpty else { return nil }
 
-        guard let streamURL = URL(string: "https://api.audius.co/v1/tracks/\(id)/stream?app_name=\(appName)") else {
+        let baseHost = selectedHost ?? "https://api.audius.co"
+        guard let streamURL = URL(string: "\(baseHost)/v1/tracks/\(id)/stream?app_name=\(appName)") else {
             return nil
         }
 
@@ -360,9 +361,7 @@ actor AudiusProvider: MusicProvider {
     }
 
     private func bestArtwork(for track: AudiusTrack) -> URL? {
-        track.artwork?.bestURL
-            ?? track.artworkSizes.flatMap { URL(string: $0) }
-            ?? track.user?.profilePicture?.bestURL
+        track.artwork?.bestURL ?? track.user?.profilePicture?.bestURL
     }
 
     private func parseDate(_ value: String?) -> Date? {
@@ -418,7 +417,6 @@ private struct AudiusTrack: Decodable {
     let downloadable: Bool?
     let streamConditions: AudiusAnyCodable?
     let artwork: AudiusArtwork?
-    let artworkSizes: String?
     let user: AudiusUser?
     let playlistName: String?
 
@@ -428,7 +426,6 @@ private struct AudiusTrack: Decodable {
         case releaseDateMs = "release_date_ms"
         case isStreamable = "is_streamable"
         case streamConditions = "stream_conditions"
-        case artworkSizes = "artwork"
         case playlistName = "playlist_name"
     }
 
@@ -450,7 +447,6 @@ private struct AudiusTrack: Decodable {
         downloadable = try? c.decodeIfPresent(Bool.self, forKey: .downloadable)
         streamConditions = try? c.decodeIfPresent(AudiusAnyCodable.self, forKey: .streamConditions)
         artwork = try? c.decodeIfPresent(AudiusArtwork.self, forKey: .artwork)
-        artworkSizes = try? c.decodeIfPresent(String.self, forKey: .artworkSizes)
         user = try? c.decodeIfPresent(AudiusUser.self, forKey: .user)
         playlistName = try? c.decodeIfPresent(String.self, forKey: .playlistName)
     }
@@ -524,7 +520,10 @@ private struct AudiusArtwork: Decodable {
     }
 
     var bestURL: URL? {
-        [x1000, x480, x150].compactMap { $0 }.compactMap(URL.init).first
+        [x1000, x480, x150]
+            .compactMap { $0 }
+            .compactMap { URL(string: $0) }
+            .first
     }
 }
 
