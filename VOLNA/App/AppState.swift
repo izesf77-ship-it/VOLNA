@@ -16,6 +16,8 @@ final class AppState {
     let searchService: SearchService
     let searchHistory: SearchHistoryStore
     let catalog: CatalogService
+    let radio: RadioService
+    let radioFavorites: RadioFavoritesStore
 
     // UI state
     var selectedTab: AppTab = .home
@@ -70,6 +72,8 @@ final class AppState {
         self.searchService = SearchService(providerRegistry: registry)
         self.searchHistory = SearchHistoryStore()
         self.catalog = catalog
+        self.radio = RadioService()
+        self.radioFavorites = RadioFavoritesStore()
     }
 
     // MARK: - Playback helpers
@@ -83,8 +87,12 @@ final class AppState {
         library.toggleFavorite(track)
     }
 
+    func playRadio(_ station: RadioStation) {
+        player.playRadio(station)
+    }
+
     func showPlayer() {
-        if player.currentTrack != nil {
+        if player.hasNowPlaying {
             isPlayerPresented = true
         }
     }
@@ -254,12 +262,14 @@ struct HomeSection: Identifiable {
 enum AppTab: String, CaseIterable, Hashable {
     case home
     case search
+    case radio
     case library
 
     var title: String {
         switch self {
         case .home: return "Главная"
         case .search: return "Поиск"
+        case .radio: return "Радио"
         case .library: return "Медиатека"
         }
     }
@@ -268,6 +278,7 @@ enum AppTab: String, CaseIterable, Hashable {
         switch self {
         case .home: return "house"
         case .search: return "magnifyingglass"
+        case .radio: return "dot.radiowaves.left.and.right"
         case .library: return "square.stack"
         }
     }
@@ -276,6 +287,7 @@ enum AppTab: String, CaseIterable, Hashable {
         switch self {
         case .home: return "house.fill"
         case .search: return "magnifyingglass"
+        case .radio: return "dot.radiowaves.left.and.right"
         case .library: return "square.stack.fill"
         }
     }

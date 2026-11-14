@@ -1,4 +1,4 @@
-name: Build and Test
+name: Build, Test and IPA
 
 on:
   push:
@@ -12,7 +12,7 @@ on:
   workflow_dispatch:
 
 jobs:
-  build:
+  build-and-test:
     name: Build and test on iOS Simulator
     runs-on: macos-latest
     timeout-minutes: 40
@@ -156,6 +156,7 @@ jobs:
           capture search-keyboard.ready 06-search-keyboard.png -uiScreenshotTab search -uiScreenshotKeyboard
           capture home-scroll.ready 07-home-scroll.png -uiScreenshotTab home -uiScreenshotScroll
           capture build-info.ready 08-build-info.png -uiScreenshotTab home -uiScreenshotSettings
+          capture radio.ready 09-radio.png -uiScreenshotTab radio
 
           ls -lh artifacts/screenshots
 
@@ -176,3 +177,214 @@ jobs:
           path: build/DerivedData/Logs
           if-no-files-found: ignore
           retention-days: 7
+
+  build-ipa:
+    name: Build signed IPA for iPhone
+    runs-on: macos-latest
+    needs: build-and-test
+    timeout-minutes: 45
+
+    env:
+      BUILD_SHA: ${{ github.sha }}
+      BUILD_NUMBER: ${{ github.run_id }}
+      IOS_CERTIFICATE_P12_BASE64: ${{ secrets.IOS_CERTIFICATE_P12_BASE64 }}
+      IOS_CERTIFICATE_PASSWORD: ${{ secrets.IOS_CERTIFICATE_PASSWORD }}
+      IOS_PROVISIONING_PROFILE_BASE64: ${{ secrets.IOS_PROVISIONING_PROFILE_BASE64 }}
+      APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Show Xcode version
+        run: |
+          xcodebuild -version
+          xcodebuild -showsdks | head -40
+
+      - name: Install XcodeGen
+        run: brew install xcodegen
+
+      - name: Generate Xcode project
+        run: xcodegen generate
+
+      - name: Validate signing secrets
+        id: signing
+        run: |
+          set -euo pipefail
+          missing=()
+          [ -z "${IOS_CERTIFICATE_P12_BASE64:-}" ] && missing+=("IOS_CERTIFICATE_P12_BASE64")
+          [ -z "${IOS_CERTIFICATE_PASSWORD:-}" ] && missing+=("IOS_CERTIFICATE_PASSWORD")
+          [ -z "${IOS_PROVISIONING_PROFILE_BASE64:-}" ] && missing+=("IOS_PROVISIONING_PROFILE_BASE64")
+          [ -z "${APPLE_TEAM_ID:-}" ] && missing+=("APPLE_TEAM_ID")
+          if [ ${#missing[@]} -gt 0 ]; then
+            echo "configured=false" >> "$GITHUB_OUTPUT"
+            echo "::error::Отсутствуют GitHub Secrets для подписи: ${missing[*]}"
+            echo "Для получения устанавливаемого IPA на реальный iPhone необходимы:"
+            echo "  - IOS_CERTIFICATE_P12_BASE64: сертификат Apple Distribution или Apple Development в формате .p12 (base64)"
+            echo "  - IOS_CERTIFICATE_PASSWORD: пароль от .p12"
+            echo "  - IOS_PROVISIONING_PROFILE_BASE64: provisioning profile для com.volna.app (Ad Hoc или Development, base64)"
+            echo "  - APPLE_TEAM_ID: Team ID Apple Developer"
+            echo "Секреты нужно добавить в Settings → Secrets and variables → Actions. Сертификаты/профили нельзя добавлять в Git."
+            exit 1
+          fi
+          echo "configured=true" >> "$GITHUB_OUTPUT"
+
+      - name: Install certificate and provisioning profile
+        run: |
+          set -euo pipefail
+          CERT_PATH="$RUNNER_TEMP/certificate.p12"
+          PROFILE_PATH="$RUNNER_TEMP/profile.mobileprovision"
+          KEYCHAIN_PATH="$RUNNER_TEMP/signing.keychain-db"
+          KEYCHAIN_PASSWORD="$(openssl rand -base64 24)"
+
+          printf '%s' "$IOS_CERTIFICATE_P12_BASE64" | base64 --decode > "$CERT_PATH"
+          printf '%s' "$IOS_PROVISIONING_PROFILE_BASE64" | base64 --decode > "$PROFILE_PATH"
+
+          security create-keychain -p "$KEYCHAIN_PASSWORD" "$KEYCHAIN_PATH"
+          security set-keychain-settings -lut 21600 "$KEYCHAIN_PATH"
+          security unlock-keychain -p "$KEYCHAIN_PASSWORD" "$KEYCHAIN_PATH"
+          security import "$CERT_PATH" -P "$IOS_CERTIFICATE_PASSWORD" -A -t cert -f pkcs12 -k "$KEYCHAIN_PATH"
+          security list-keychain -d user -s "$KEYCHAIN_PATH" login.keychain-db
+          security set-key-partition-list -S apple-tool:,apple:,codesign: -s -k "$KEYCHAIN_PASSWORD" "$KEYCHAIN_PATH" >/dev/null
+
+          mkdir -p "$HOME/Library/MobileDevice/Provisioning Profiles"
+          PROFILE_UUID=$(/usr/libexec/PlistBuddy -c 'Print UUID' /dev/stdin <<< "$(security cms -D -i "$PROFILE_PATH")")
+          PROFILE_NAME=$(/usr/libexec/PlistBuddy -c 'Print Name' /dev/stdin <<< "$(security cms -D -i "$PROFILE_PATH")")
+          cp "$PROFILE_PATH" "$HOME/Library/MobileDevice/Provisioning Profiles/$PROFILE_UUID.mobileprovision"
+
+          HAS_DEVICES=$(/usr/libexec/PlistBuddy -c 'Print ProvisionedDevices' /dev/stdin <<< "$(security cms -D -i "$PROFILE_PATH")" >/dev/null 2>&1 && echo yes || echo no)
+          GET_TASK_ALLOW=$(/usr/libexec/PlistBuddy -c 'Print Entitlements:get-task-allow' /dev/stdin <<< "$(security cms -D -i "$PROFILE_PATH")" 2>/dev/null || echo false)
+          if [ "$HAS_DEVICES" = "yes" ] && [ "$GET_TASK_ALLOW" = "false" ]; then
+            EXPORT_METHOD="ad-hoc"
+          elif [ "$HAS_DEVICES" = "yes" ]; then
+            EXPORT_METHOD="development"
+          else
+            EXPORT_METHOD="app-store"
+          fi
+
+          {
+            echo "PROFILE_UUID=$PROFILE_UUID"
+            echo "PROFILE_NAME=$PROFILE_NAME"
+            echo "EXPORT_METHOD=$EXPORT_METHOD"
+            echo "KEYCHAIN_PATH=$KEYCHAIN_PATH"
+          } >> "$GITHUB_ENV"
+
+          echo "Installed provisioning profile: $PROFILE_NAME ($PROFILE_UUID), export method: $EXPORT_METHOD"
+
+      - name: Archive for iOS device
+        run: |
+          set -o pipefail
+          xcodebuild archive \
+            -project VOLNA.xcodeproj \
+            -scheme VOLNA \
+            -configuration Release \
+            -destination 'generic/platform=iOS' \
+            -archivePath build/VOLNA.xcarchive \
+            -derivedDataPath build/DerivedData \
+            CODE_SIGN_STYLE=Manual \
+            DEVELOPMENT_TEAM="$APPLE_TEAM_ID" \
+            PROVISIONING_PROFILE_SPECIFIER="$PROFILE_NAME" \
+            CODE_SIGN_IDENTITY="Apple Distribution" \
+            MARKETING_VERSION=1.0.0 \
+            CURRENT_PROJECT_VERSION="$BUILD_NUMBER" \
+            BUILD_SHA="$BUILD_SHA" \
+            archive || \
+          xcodebuild archive \
+            -project VOLNA.xcodeproj \
+            -scheme VOLNA \
+            -configuration Release \
+            -destination 'generic/platform=iOS' \
+            -archivePath build/VOLNA.xcarchive \
+            -derivedDataPath build/DerivedData \
+            CODE_SIGN_STYLE=Manual \
+            DEVELOPMENT_TEAM="$APPLE_TEAM_ID" \
+            PROVISIONING_PROFILE_SPECIFIER="$PROFILE_NAME" \
+            CODE_SIGN_IDENTITY="Apple Development" \
+            MARKETING_VERSION=1.0.0 \
+            CURRENT_PROJECT_VERSION="$BUILD_NUMBER" \
+            BUILD_SHA="$BUILD_SHA" \
+            archive
+
+      - name: Export IPA
+        id: export
+        run: |
+          set -euo pipefail
+          cat > "$RUNNER_TEMP/ExportOptions.plist" <<PLIST
+          <?xml version="1.0" encoding="UTF-8"?>
+          <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+          <plist version="1.0">
+          <dict>
+            <key>method</key>
+            <string>${EXPORT_METHOD}</string>
+            <key>teamID</key>
+            <string>${APPLE_TEAM_ID}</string>
+            <key>provisioningProfiles</key>
+            <dict>
+              <key>com.volna.app</key>
+              <string>${PROFILE_NAME}</string>
+            </dict>
+            <key>signingStyle</key>
+            <string>manual</string>
+            <key>stripSwiftSymbols</key>
+            <true/>
+            <key>compileBitcode</key>
+            <false/>
+          </dict>
+          </plist>
+          PLIST
+
+          mkdir -p build/export
+          xcodebuild -exportArchive \
+            -archivePath build/VOLNA.xcarchive \
+            -exportPath build/export \
+            -exportOptionsPlist "$RUNNER_TEMP/ExportOptions.plist"
+
+          IPA_PATH="$(find build/export -maxdepth 1 -name '*.ipa' -print -quit)"
+          if [ -z "$IPA_PATH" ]; then
+            echo "::error::IPA не был создан при экспорте архива"
+            exit 1
+          fi
+          mkdir -p artifacts/ipa
+          cp "$IPA_PATH" artifacts/ipa/VOLNA.ipa
+          IPA_SIZE=$(stat -f%z "artifacts/ipa/VOLNA.ipa" 2>/dev/null || wc -c < "artifacts/ipa/VOLNA.ipa")
+          echo "ipa_path=artifacts/ipa/VOLNA.ipa" >> "$GITHUB_OUTPUT"
+          echo "ipa_size=$IPA_SIZE" >> "$GITHUB_OUTPUT"
+          echo "export_method=${EXPORT_METHOD}" >> "$GITHUB_OUTPUT"
+          echo "IPA создан: artifacts/ipa/VOLNA.ipa ($IPA_SIZE bytes, method=${EXPORT_METHOD})"
+          ls -lh artifacts/ipa
+
+      - name: Verify IPA
+        run: |
+          set -euo pipefail
+          test -f artifacts/ipa/VOLNA.ipa
+          unzip -l artifacts/ipa/VOLNA.ipa | head -20
+          SIZE=$(stat -f%z artifacts/ipa/VOLNA.ipa 2>/dev/null || wc -c < artifacts/ipa/VOLNA.ipa)
+          echo "IPA size: $SIZE bytes"
+
+      - name: Upload IPA artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: VOLNA-iphone-ipa-${{ github.sha }}
+          path: artifacts/ipa/VOLNA.ipa
+          if-no-files-found: error
+          retention-days: 30
+
+      - name: Upload archive logs on failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: ipa-build-logs-${{ github.sha }}
+          path: |
+            build/DerivedData/Logs
+            build/export
+            ${{ runner.temp }}/*.plist
+          if-no-files-found: ignore
+          retention-days: 7
+
+      - name: Cleanup keychain
+        if: always()
+        run: |
+          if [ -n "${KEYCHAIN_PATH:-}" ] && [ -f "$KEYCHAIN_PATH" ]; then
+            security delete-keychain "$KEYCHAIN_PATH" || true
+          fi
+          rm -f "$RUNNER_TEMP/certificate.p12" "$RUNNER_TEMP/profile.mobileprovision" "$RUNNER_TEMP/ExportOptions.plist" || true

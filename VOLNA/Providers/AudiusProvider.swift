@@ -33,6 +33,9 @@ actor AudiusProvider: MusicProvider {
 
     private var selectedHost: String?
     private var hostCacheExpiresAt: Date = .distantPast
+    /// Хосты, которые недавно не ответили: их не выбираем повторно,
+    /// пока кэш хоста не протухнет.
+    private var failedHosts: Set<String> = []
     private var lastSearchAt: Date = .distantPast
     private let minSearchInterval: TimeInterval = 0.25
     private var blockedUntil: Date = .distantPast
@@ -242,12 +245,17 @@ actor AudiusProvider: MusicProvider {
 
     private func resolveHost() async throws -> String {
         if let selectedHost, Date() < hostCacheExpiresAt { return selectedHost }
-        for candidate in ([try? await fetchBootstrapHost()].compactMap { $0 } + fallbackHosts) {
-            selectedHost = candidate
-            hostCacheExpiresAt = Date().addingTimeInterval(10 * 60)
-            return candidate
+        let candidates = ([try? await fetchBootstrapHost()].compactMap { $0 } + fallbackHosts)
+        // Первый кандидат, который ещё не помечен как отказавший. Без этого
+        // цикл всегда выбирал бы один и тот же хост даже после его ошибки.
+        let candidate = candidates.first { !failedHosts.contains($0) }
+            ?? candidates.first
+        guard let candidate else {
+            throw ProviderError.invalidConfiguration
         }
-        throw ProviderError.invalidConfiguration
+        selectedHost = candidate
+        hostCacheExpiresAt = Date().addingTimeInterval(10 * 60)
+        return candidate
     }
 
     private func fetchBootstrapHost() async throws -> String? {
@@ -261,6 +269,14 @@ actor AudiusProvider: MusicProvider {
     }
 
     private func invalidateHostCache() {
+        if let selectedHost {
+            failedHosts.insert(selectedHost)
+            // Когда помечены все хосты, сбрасываем: возможно, сеть
+            // восстановилась и стоит попробовать с самого начала.
+            if failedHosts.count >= fallbackHosts.count + 1 {
+                failedHosts.removeAll()
+            }
+        }
         selectedHost = nil
         hostCacheExpiresAt = .distantPast
     }

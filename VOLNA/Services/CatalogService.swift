@@ -163,7 +163,14 @@ final class CatalogService {
 
     private func fetchDiscovery() async -> [DiscoveryBucket: [Track]] {
         let enabled = enabledProviderIDs()
-        let active = providers.filter { enabled.contains($0.id) || $0.capabilities.isLocal }
+        // Rate-limited источники (анонимный дневной лимит Openverse — 200
+        // запросов на IP) не участвуют в фоновых подборках каталога, чтобы не
+        // сжигать лимит: они используются только для явного поиска
+        // пользователя. Это соответствует документации OpenverseProvider.
+        let discoveryExcluded: Set<String> = ["openverse"]
+        let active = providers.filter {
+            (enabled.contains($0.id) || $0.capabilities.isLocal) && !discoveryExcluded.contains($0.id)
+        }
         guard !active.isEmpty else { return [:] }
 
         let queries: [(DiscoveryBucket, String, SearchType)] = [

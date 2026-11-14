@@ -17,6 +17,8 @@ struct RootView: View {
                     HomeView()
                 case .search:
                     SearchView()
+                case .radio:
+                    RadioView()
                 case .library:
                     LibraryView()
                 }
@@ -27,7 +29,7 @@ struct RootView: View {
 
             // Floating bottom controls (mini player + tab bar)
             VStack(spacing: VolnaLayout.floatingStackSpacing) {
-                if appState.player.currentTrack != nil {
+                if appState.player.hasNowPlaying {
                     MiniPlayerView()
                         .transition(.move(edge: .bottom).combined(with: .opacity))
                 }
@@ -68,8 +70,14 @@ struct RootView: View {
             appState.bottomControlsHeight = height
         }
         .fullScreenCover(isPresented: $state.isPlayerPresented) {
-            PlayerView()
-                .environment(appState)
+            Group {
+                if appState.player.mode == .radio {
+                    RadioPlayerView()
+                } else {
+                    PlayerView()
+                }
+            }
+            .environment(appState)
         }
         // Каталог загружается один раз на уровне корня, а не только на
         // главной: поиск и настройки должны видеть те же реальные релизы,
@@ -94,6 +102,7 @@ struct RootView: View {
            arguments.indices.contains(index + 1) {
             switch arguments[index + 1] {
             case "search": appState.selectedTab = .search
+            case "radio": appState.selectedTab = .radio
             case "library": appState.selectedTab = .library
             default: appState.selectedTab = .home
             }
@@ -115,6 +124,10 @@ struct RootView: View {
         }
 
         await waitForCatalog(timeout: (wantsPlayer || wantsMiniPlayer) ? 90 : 60)
+
+        if appState.selectedTab == .radio {
+            await waitForRadio(timeout: 45)
+        }
 
         if wantsPlayer || wantsMiniPlayer, let track = appState.catalog.tracks.first {
             appState.play(track, in: Array(appState.catalog.tracks.prefix(20)))
@@ -158,6 +171,18 @@ struct RootView: View {
                 attempts += 1
                 await appState.catalog.loadIfNeeded()
             }
+            try? await Task.sleep(nanoseconds: 300_000_000)
+        }
+    }
+
+    /// Скриншот вкладки «Радио» должен сниматься после первой витрины, иначе
+    /// CI зафиксирует пустой экран загрузки.
+    private func waitForRadio(timeout: TimeInterval) async {
+        let deadline = Date().addingTimeInterval(timeout)
+        // Запускаем загрузку один раз (или присоединяемся к уже идущей) и
+        // ждём её завершения. Повторные вызовы на ошибке забили бы API.
+        await appState.radio.loadFeedIfNeeded()
+        while appState.radio.isFeedLoading, Date() < deadline {
             try? await Task.sleep(nanoseconds: 300_000_000)
         }
     }

@@ -55,6 +55,11 @@
 	<dict>
 		<key>NSAllowsArbitraryLoads</key>
 		<false/>
+		<!-- Многие легальные радиостанции Radio Browser вещают по HTTP.
+		     Исключение действует только на медиа, загружаемое AVFoundation;
+		     сетевые API и изображения по-прежнему требуют HTTPS. -->
+		<key>NSAllowsArbitraryLoadsForMedia</key>
+		<true/>
 	</dict>
 	<key>ITSAppUsesNonExemptEncryption</key>
 	<false/>

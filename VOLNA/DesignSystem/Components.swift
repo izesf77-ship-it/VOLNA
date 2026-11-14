@@ -8,6 +8,7 @@ struct ArtworkView: View {
     var cornerRadius: CGFloat = 12
     var showProgress = true
     var contentMode: ContentMode = .fill
+    var placeholderIcon = "music.note"
 
     var body: some View {
         AsyncImage(
@@ -54,7 +55,7 @@ struct ArtworkView: View {
                 startPoint: .topLeading,
                 endPoint: .bottomTrailing
             )
-            Image(systemName: "music.note")
+            Image(systemName: placeholderIcon)
                 .font(.system(size: max(18, size * 0.28), weight: .medium))
                 .foregroundStyle(.white.opacity(0.25))
         }
@@ -446,7 +447,9 @@ struct TrackRow: View {
     @State private var showPlaylistDialog = false
 
     private var isCurrent: Bool {
-        appState.player.currentTrack?.id == track.id
+        // В радио-режиме currentTrack хранится для возврата к музыке, но не
+        // играет. Подсвечивать его как активный трек нельзя.
+        appState.player.mode == .music && appState.player.currentTrack?.id == track.id
     }
 
     var body: some View {

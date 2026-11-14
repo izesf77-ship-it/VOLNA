@@ -54,6 +54,10 @@ struct HomeView: View {
                             trackShelf(section: new)
                         }
 
+                        if !appState.radio.popular.isEmpty {
+                            radioSection
+                        }
+
                         if !catalog.artists.isEmpty {
                             artistsSection
                         }
@@ -77,6 +81,10 @@ struct HomeView: View {
             .toolbar(.hidden, for: .navigationBar)
             .refreshable {
                 await appState.refreshCatalog()
+                await appState.radio.loadPopularIfNeeded(force: true)
+            }
+            .task {
+                await appState.radio.loadPopularIfNeeded()
             }
             .navigationDestination(for: Artist.self) { ArtistView(artist: $0) }
             .navigationDestination(for: Album.self) { AlbumView(album: $0) }
@@ -326,6 +334,42 @@ struct HomeView: View {
                 LazyHStack(alignment: .top, spacing: 14) {
                     ForEach(Array(catalog.recentAlbums.prefix(10))) { album in
                         AlbumCard(album: album, width: 152)
+                    }
+                }
+                .padding(.vertical, 2)
+            }
+            .scrollClipDisabled()
+        }
+    }
+
+    // MARK: - Radio
+
+    private var radioSection: some View {
+        VStack(alignment: .leading, spacing: 14) {
+            HStack(alignment: .top, spacing: 12) {
+                VStack(alignment: .leading, spacing: 4) {
+                    Text("Радио со всего мира")
+                        .font(VolnaFont.custom(22, weight: .semibold, relativeTo: .title2))
+                        .foregroundStyle(Color.volnaTextPrimary)
+                    Text("Живые эфиры · Radio Browser")
+                        .font(VolnaFont.custom(13, weight: .regular, relativeTo: .footnote))
+                        .foregroundStyle(Color.volnaTextTertiary)
+                }
+                Spacer(minLength: 8)
+                Button {
+                    appState.selectedTab = .radio
+                } label: {
+                    Text("Все")
+                        .font(VolnaFont.custom(14, weight: .semibold, relativeTo: .subheadline))
+                        .foregroundStyle(Color.volnaPurple)
+                }
+                .buttonStyle(.plain)
+            }
+
+            ScrollView(.horizontal, showsIndicators: false) {
+                LazyHStack(alignment: .top, spacing: 14) {
+                    ForEach(Array(appState.radio.popular.prefix(10))) { station in
+                        RadioStationCard(station: station, width: 146)
                     }
                 }
                 .padding(.vertical, 2)
@@ -651,7 +695,7 @@ private struct HomeChartRow: View {
     let queue: [Track]
 
     private var isCurrent: Bool {
-        appState.player.currentTrack?.id == track.id
+        appState.player.mode == .music && appState.player.currentTrack?.id == track.id
     }
 
     var body: some View {

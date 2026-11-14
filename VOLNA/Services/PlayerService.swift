@@ -25,6 +25,27 @@ enum RepeatMode: String, Codable, CaseIterable, Sendable {
     }
 }
 
+/// Режим единственного AVPlayer. Музыка и радио никогда не играют
+/// одновременно: переключение заменяет текущий item у того же плеера.
+enum PlaybackMode: String, Codable, Equatable, Sendable {
+    case music
+    case radio
+}
+
+/// Снимок музыкального воспроизведения на момент ухода в радио.
+/// Позволяет вернуться к тому же треку и позиции без второй аудиосессии.
+struct MusicResumeSnapshot: Codable, Equatable, Sendable {
+    let queue: [Track]
+    let currentIndex: Int
+    let currentTime: TimeInterval
+    let duration: TimeInterval
+    let isShuffled: Bool
+    let repeatMode: RepeatMode
+    let shuffleOrder: [Int]
+    let shufflePosition: Int
+    let wasPlaying: Bool
+}
+
 /// Реальный музыкальный плеер на AVPlayer.
 ///
 /// Поддерживает очередь, перемешивание, повтор, seek, фоновое
@@ -45,6 +66,24 @@ final class PlayerService {
     private(set) var playbackError: String?
     private(set) var isShuffled = false
     private(set) var repeatMode: RepeatMode = .off
+    private(set) var mode: PlaybackMode = .music
+    private(set) var radioStation: RadioStation?
+    private(set) var radioMetadata: ICYNowPlaying?
+    private(set) var isRadioReconnecting = false
+    private(set) var radioReconnectAttempt = 0
+
+    /// Есть ли что показывать в MiniPlayer / полноэкранном плеере.
+    var hasNowPlaying: Bool {
+        if mode == .radio { return radioStation != nil }
+        return currentTrack != nil
+    }
+
+    /// Можно ли вернуть пользователя к музыке после радио.
+    var hasMusicToResume: Bool {
+        mode == .radio && musicResume != nil
+    }
+
+    private var musicResume: MusicResumeSnapshot?
 
     // MARK: - AVPlayer
 
@@ -61,6 +100,14 @@ final class PlayerService {
     private var wasPlayingBeforeInterruption = false
     private var pendingSeek: TimeInterval?
 
+    // MARK: - Radio runtime
+
+    private var radioMetadataTask: Task<Void, Never>?
+    private var radioReconnectTask: Task<Void, Never>?
+    private var radioStallTicks = 0
+    private var radioStableTicks = 0
+    private let radioMetadataClient = ICYMetadataClient()
+
     // MARK: - Now Playing artwork
 
     private var artworkCache: [String: MPMediaItemArtwork] = [:]
@@ -69,10 +116,12 @@ final class PlayerService {
 
     private let stateKey = "volna.player.state.v1"
     private let audioSession = AVAudioSession.sharedInstance()
+    private let defaults: UserDefaults
 
     // MARK: - Init
 
-    init() {
+    init(defaults: UserDefaults = .standard) {
+        self.defaults = defaults
         configureAudioSession()
         setupPlayer()
         setupRemoteCommands()
@@ -83,6 +132,10 @@ final class PlayerService {
     // MARK: - Public control
 
     func play(_ track: Track, queue newQueue: [Track]? = nil) {
+        leaveRadioMode(clearMusicResume: true)
+        player.pause()
+        mode = .music
+
         let resolvedQueue: [Track]
         if let newQueue, !newQueue.isEmpty {
             resolvedQueue = newQueue
@@ -98,6 +151,52 @@ final class PlayerService {
         loadCurrentTrack(autoplay: true)
     }
 
+    /// Запускает интернет-радио в том же AVPlayer.
+    ///
+    /// Музыкальная очередь и позиция не уничтожаются: они сохраняются в
+    /// `musicResume`, а `currentTrack` остаётся для возврата к музыке. UI
+    /// обязан смотреть на `mode`, а не только на `currentTrack`.
+    func playRadio(_ station: RadioStation) {
+        guard station.isPlayable, station.playbackURL != nil else {
+            playbackError = "У этой радиостанции нет доступного аудиопотока."
+            return
+        }
+
+        if mode == .radio, radioStation?.id == station.id {
+            if !isPlaying {
+                resume()
+            }
+            return
+        }
+
+        if mode == .music, currentTrack != nil, !queue.isEmpty {
+            musicResume = MusicResumeSnapshot(
+                queue: queue,
+                currentIndex: currentIndex,
+                currentTime: currentTime,
+                duration: duration,
+                isShuffled: isShuffled,
+                repeatMode: repeatMode,
+                shuffleOrder: shuffleOrder,
+                shufflePosition: shufflePosition,
+                wasPlaying: isPlaying
+            )
+        }
+
+        leaveRadioMode(clearMusicResume: false)
+        mode = .radio
+        radioStation = station
+        radioMetadata = nil
+        isRadioReconnecting = false
+        radioReconnectAttempt = 0
+        radioStallTicks = 0
+        radioStableTicks = 0
+        currentTime = 0
+        duration = 0
+        playbackError = nil
+        loadRadio(autoplay: true)
+    }
+
     func togglePlayPause() {
         if isPlaying {
             pause()
@@ -107,6 +206,33 @@ final class PlayerService {
     }
 
     func resume() {
+        if mode == .radio {
+            if radioStation == nil { return }
+            if player.currentItem == nil || player.currentItem?.status == .failed {
+                radioReconnectAttempt = 0
+                radioStallTicks = 0
+                radioStableTicks = 0
+                isRadioReconnecting = false
+                playbackError = nil
+                loadRadio(autoplay: true)
+                return
+            }
+
+            do {
+                try audioSession.setActive(true)
+            } catch {
+                playbackError = "Не удалось активировать аудиосессию: \(error.localizedDescription)"
+            }
+            radioReconnectAttempt = 0
+            radioStallTicks = 0
+            player.play()
+            isPlaying = true
+            startRadioMetadataProbe()
+            updateNowPlayingInfo()
+            saveState()
+            return
+        }
+
         if currentTrack == nil {
             guard let first = queue.first else { return }
             currentTrack = first
@@ -118,6 +244,12 @@ final class PlayerService {
         if player.currentItem == nil {
             loadCurrentTrack(autoplay: true)
             return
+        }
+
+        // После конца очереди currentTime равен duration: resume с конца
+        // ничего не воспроизведёт — начинаем текущий трек заново.
+        if duration > 0, currentTime >= duration - 0.5 {
+            seek(to: 0)
         }
 
         do {
@@ -134,15 +266,24 @@ final class PlayerService {
     func pause() {
         player.pause()
         isPlaying = false
+        if mode == .radio {
+            stopRadioMetadataProbe()
+            radioReconnectTask?.cancel()
+            radioReconnectTask = nil
+            isRadioReconnecting = false
+            isBuffering = false
+        }
         updateNowPlayingInfo()
         saveState()
     }
 
     func next() {
+        guard mode == .music else { return }
         advance(by: 1)
     }
 
     func previous() {
+        guard mode == .music else { return }
         guard !queue.isEmpty else { return }
         if currentTime > 3 {
             seek(to: 0)
@@ -152,6 +293,7 @@ final class PlayerService {
     }
 
     func seek(to time: TimeInterval) {
+        guard mode == .music else { return }
         guard currentTrack != nil else { return }
         let maxTime = duration > 0 ? duration : max(time, 0)
         let clamped = min(max(time, 0), maxTime)
@@ -164,16 +306,19 @@ final class PlayerService {
     }
 
     func seek(by offset: TimeInterval) {
+        guard mode == .music else { return }
         seek(to: currentTime + offset)
     }
 
     func toggleShuffle() {
+        guard mode == .music else { return }
         isShuffled.toggle()
         resetShuffleOrder()
         saveState()
     }
 
     func cycleRepeatMode() {
+        guard mode == .music else { return }
         switch repeatMode {
         case .off: repeatMode = .all
         case .all: repeatMode = .one
@@ -183,7 +328,13 @@ final class PlayerService {
     }
 
     func appendToQueue(_ track: Track) {
-        guard !queue.contains(where: { $0.id == track.id && $0.primaryStream?.streamURL == track.primaryStream?.streamURL }) else {
+        // Очередь принадлежит музыкальному режиму. В радио она лишь хранится
+        // для возврата, и добавлять в неё треки нельзя: это могло бы заменить
+        // текущий радио-поток при пустом currentTrack.
+        guard mode == .music else { return }
+        // Дедупликация по id: один и тот же трек не должен попадать в очередь
+        // дважды, даже если объект трека собран заново с тем же потоком.
+        guard !queue.contains(where: { $0.id == track.id }) else {
             return
         }
         queue.append(track)
@@ -199,6 +350,7 @@ final class PlayerService {
     }
 
     func playNext(_ track: Track) {
+        guard mode == .music else { return }
         guard currentTrack != nil else {
             play(track, queue: [track])
             return
@@ -210,6 +362,7 @@ final class PlayerService {
     }
 
     func removeFromQueue(id: String) {
+        guard mode == .music else { return }
         guard let index = queue.firstIndex(where: { $0.id == id }) else { return }
         let removingCurrent = index == currentIndex
         let wasPlaying = isPlaying
@@ -240,7 +393,54 @@ final class PlayerService {
         stop()
     }
 
+    /// Ручная попытка переподключения после исчерпанных автопопыток.
+    func retryRadioPlayback() {
+        guard mode == .radio, radioStation != nil else { return }
+        radioReconnectTask?.cancel()
+        radioReconnectTask = nil
+        radioReconnectAttempt = 0
+        radioStallTicks = 0
+        radioStableTicks = 0
+        isRadioReconnecting = false
+        playbackError = nil
+        loadRadio(autoplay: true)
+    }
+
+    /// Возвращает сохранённую музыку с той же позиции, с которой началось радио.
+    func returnToMusic() {
+        guard mode == .radio, let snapshot = musicResume, !snapshot.queue.isEmpty else { return }
+
+        player.pause()
+        leaveRadioMode(clearMusicResume: true)
+        mode = .music
+
+        queue = snapshot.queue
+        currentIndex = min(max(snapshot.currentIndex, 0), queue.count - 1)
+        repeatMode = snapshot.repeatMode
+        isShuffled = snapshot.isShuffled
+        shuffleOrder = snapshot.shuffleOrder
+        shufflePosition = min(max(snapshot.shufflePosition, 0), max(0, queue.count - 1))
+        currentTrack = queue[currentIndex]
+        duration = snapshot.duration
+        currentTime = snapshot.currentTime
+        playbackError = nil
+        // Если музыка играла до перехода в радио — продолжаем с той же
+        // позиции. Если была пауза, возвращаемся на паузу, а не запускаем
+        // звук против воли пользователя.
+        loadCurrentTrack(autoplay: snapshot.wasPlaying)
+        if snapshot.currentTime > 0 {
+            pendingSeek = snapshot.currentTime
+            // loadCurrentTrack сбрасывает позицию нового item в 0. Пока
+            // AVPlayer не применит pendingSeek, показываем и сохраняем
+            // позицию, с которой пользователь ушёл в радио.
+            currentTime = snapshot.currentTime
+        }
+        updateNowPlayingInfo()
+        saveState()
+    }
+
     func stop() {
+        leaveRadioMode(clearMusicResume: true)
         player.pause()
         player.replaceCurrentItem(with: nil)
         currentTrack = nil
@@ -254,26 +454,243 @@ final class PlayerService {
         shuffleOrder = []
         shufflePosition = 0
         MPNowPlayingInfoCenter.default().nowPlayingInfo = nil
-        UserDefaults.standard.removeObject(forKey: stateKey)
+        defaults.removeObject(forKey: stateKey)
     }
 
     func saveState() {
         guard !isRestoring else { return }
-        guard !queue.isEmpty else {
-            UserDefaults.standard.removeObject(forKey: stateKey)
+        guard !queue.isEmpty || (mode == .radio && radioStation != nil) else {
+            defaults.removeObject(forKey: stateKey)
             return
         }
 
         let snapshot = PersistedPlayerState(
             queue: queue,
             currentIndex: currentIndex,
-            currentTime: currentTime,
+            currentTime: mode == .music ? currentTime : 0,
             repeatMode: repeatMode,
             isShuffled: isShuffled,
-            savedAt: Date()
+            savedAt: Date(),
+            mode: mode,
+            radioStation: radioStation,
+            musicResume: musicResume
         )
         guard let data = try? JSONEncoder().encode(snapshot) else { return }
-        UserDefaults.standard.set(data, forKey: stateKey)
+        defaults.set(data, forKey: stateKey)
+    }
+
+    // MARK: - Radio lifecycle
+
+    private func leaveRadioMode(clearMusicResume: Bool) {
+        radioMetadataTask?.cancel()
+        radioMetadataTask = nil
+        radioReconnectTask?.cancel()
+        radioReconnectTask = nil
+        mode = .music
+        radioStation = nil
+        radioMetadata = nil
+        isRadioReconnecting = false
+        radioReconnectAttempt = 0
+        radioStallTicks = 0
+        radioStableTicks = 0
+        if clearMusicResume {
+            musicResume = nil
+        }
+    }
+
+    private func loadRadio(autoplay: Bool) {
+        guard let station = radioStation, let url = station.playbackURL else {
+            playbackError = "У этой радиостанции нет доступного аудиопотока."
+            isPlaying = false
+            isBuffering = false
+            return
+        }
+
+        do {
+            try audioSession.setActive(true)
+        } catch {
+            playbackError = "Не удалось активировать аудиосессию: \(error.localizedDescription)"
+        }
+
+        let item = AVPlayerItem(url: url)
+        item.preferredForwardBufferDuration = 4
+        player.replaceCurrentItem(with: item)
+
+        duration = 0
+        currentTime = 0
+        isBuffering = true
+        isRadioReconnecting = false
+        radioStallTicks = 0
+        radioStableTicks = 0
+        pendingSeek = nil
+        playbackError = nil
+
+        if autoplay {
+            player.play()
+            isPlaying = true
+            startRadioMetadataProbe()
+        } else {
+            isPlaying = false
+            stopRadioMetadataProbe()
+        }
+
+        updateNowPlayingInfo()
+        loadRadioArtwork(for: station)
+        saveState()
+    }
+
+    private func startRadioMetadataProbe() {
+        guard mode == .radio, let station = radioStation, let url = station.playbackURL else { return }
+        radioMetadataTask?.cancel()
+        let client = radioMetadataClient
+        radioMetadataTask = Task { [weak self] in
+            var failedAttempts = 0
+            while !Task.isCancelled {
+                guard let metadata = await client.fetch(from: url) else {
+                    failedAttempts += 1
+                    // Не все станции отдают ICY-метаданные. Не долбим поток
+                    // бесконечно: три попытки, затем живём без метаданных.
+                    guard failedAttempts < 3 else { return }
+                    try? await Task.sleep(nanoseconds: 30_000_000_000)
+                    continue
+                }
+                failedAttempts = 0
+                guard let self, !Task.isCancelled else { return }
+                guard self.mode == .radio, self.radioStation?.id == station.id else { return }
+                if self.radioMetadata?.rawTitle != metadata.rawTitle {
+                    self.radioMetadata = metadata
+                    self.updateNowPlayingInfo()
+                }
+                try? await Task.sleep(nanoseconds: 30_000_000_000)
+            }
+        }
+    }
+
+    private func stopRadioMetadataProbe() {
+        radioMetadataTask?.cancel()
+        radioMetadataTask = nil
+    }
+
+    private func handleRadioTimeUpdate(_ time: CMTime) {
+        if time.isNumeric {
+            let seconds = time.seconds
+            if seconds.isFinite, seconds >= 0 {
+                currentTime = seconds
+            }
+        }
+
+        guard let item = player.currentItem else { return }
+        if item.status == .failed {
+            isBuffering = false
+            scheduleRadioReconnect()
+            return
+        }
+        if item.status == .readyToPlay {
+            duration = 0
+        }
+
+        switch player.timeControlStatus {
+        case .playing:
+            isBuffering = false
+            radioStallTicks = 0
+            radioStableTicks += 1
+            if isRadioReconnecting {
+                isRadioReconnecting = false
+            }
+            if radioStableTicks >= 20 {
+                radioReconnectAttempt = 0
+                if playbackError != nil {
+                    playbackError = nil
+                }
+            }
+            applyTimedMetadataIfAvailable()
+        case .waitingToPlayAtSpecifiedRate:
+            isBuffering = true
+            radioStableTicks = 0
+            guard isPlaying else { return }
+            radioStallTicks += 1
+            if radioStallTicks >= 30 {
+                radioStallTicks = 0
+                scheduleRadioReconnect()
+            }
+        case .paused:
+            isBuffering = false
+        @unknown default:
+            isBuffering = false
+        }
+    }
+
+    private func scheduleRadioReconnect() {
+        guard mode == .radio, radioStation != nil, isPlaying, !isRadioReconnecting else { return }
+
+        guard radioReconnectAttempt < 3 else {
+            isPlaying = false
+            isBuffering = false
+            isRadioReconnecting = false
+            playbackError = "Не удалось восстановить поток радиостанции. Проверьте соединение и попробуйте снова."
+            updateNowPlayingInfo()
+            saveState()
+            return
+        }
+
+        radioReconnectAttempt += 1
+        isRadioReconnecting = true
+        isBuffering = true
+        playbackError = "Соединение с радиостанцией прервано. Переподключение \(radioReconnectAttempt) из 3…"
+        // Намеренно не вызываем pause(): он сбрасывает isPlaying, а задача
+        // переподключения ниже проверяет его как признак намерения
+        // пользователя. Старый item сам заменится при loadRadio.
+        updateNowPlayingInfo()
+        saveState()
+
+        let attempt = radioReconnectAttempt
+        let stationID = radioStation?.id
+        radioReconnectTask?.cancel()
+        radioReconnectTask = Task { [weak self] in
+            let delay = UInt64(min(2 * attempt, 6)) * 1_000_000_000
+            try? await Task.sleep(nanoseconds: delay)
+            guard let self, !Task.isCancelled else { return }
+            guard self.mode == .radio,
+                  self.radioStation?.id == stationID,
+                  self.isPlaying else {
+                self.isRadioReconnecting = false
+                return
+            }
+            self.isRadioReconnecting = false
+            self.loadRadio(autoplay: true)
+        }
+    }
+
+    private func applyTimedMetadataIfAvailable() {
+        guard mode == .radio,
+              let metadataItems = player.currentItem?.timedMetadata,
+              !metadataItems.isEmpty else {
+            return
+        }
+
+        var artist: String?
+        var title: String?
+        for metadata in metadataItems {
+            guard let value = metadata.stringValue?.trimmingCharacters(in: .whitespacesAndNewlines),
+                  !value.isEmpty else { continue }
+            if metadata.commonKey == .commonKeyArtist {
+                artist = value
+            } else if metadata.commonKey == .commonKeyTitle {
+                title = value
+            }
+        }
+
+        let cleanTitle = title?.trimmingCharacters(in: .whitespacesAndNewlines)
+        let cleanArtist = artist?.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard let cleanTitle, !cleanTitle.isEmpty else { return }
+
+        let raw = cleanArtist.map { "\($0) - \(cleanTitle)" } ?? cleanTitle
+        guard raw != radioMetadata?.rawTitle else { return }
+        radioMetadata = ICYNowPlaying(
+            rawTitle: raw,
+            artist: cleanArtist?.isEmpty == false ? cleanArtist : nil,
+            title: cleanTitle
+        )
     }
 
     // MARK: - Loading
@@ -431,6 +848,10 @@ final class PlayerService {
                 guard let item = notification.object as? AVPlayerItem,
                       item === self.player.currentItem else { return }
                 self.isBuffering = false
+                if self.mode == .radio {
+                    self.scheduleRadioReconnect()
+                    return
+                }
                 self.handleTrackEnd()
             }
         }
@@ -444,6 +865,11 @@ final class PlayerService {
                 guard let self else { return }
                 guard let item = notification.object as? AVPlayerItem,
                       item === self.player.currentItem else { return }
+                if self.mode == .radio {
+                    self.isBuffering = false
+                    self.scheduleRadioReconnect()
+                    return
+                }
                 if let track = self.currentTrack, self.tryFallbackStream(for: track) {
                     return
                 }
@@ -457,6 +883,12 @@ final class PlayerService {
     }
 
     private func handleTimeUpdate(_ time: CMTime) {
+        if mode == .radio {
+            handleRadioTimeUpdate(time)
+            updateNowPlayingInfo()
+            return
+        }
+
         if time.isNumeric {
             let seconds = time.seconds
             if seconds.isFinite, seconds >= 0 {
@@ -613,9 +1045,29 @@ final class PlayerService {
         }
 
         UIApplication.shared.beginReceivingRemoteControlEvents()
+        updateRemoteCommandAvailability()
     }
 
     private func updateNowPlayingInfo() {
+        if mode == .radio, let station = radioStation {
+            var info: [String: Any] = [
+                MPMediaItemPropertyTitle: station.displayName,
+                MPMediaItemPropertyArtist: radioMetadata?.displayText ?? "Прямой эфир",
+                MPNowPlayingInfoPropertyPlaybackRate: isPlaying ? 1.0 : 0.0,
+                MPNowPlayingInfoPropertyDefaultPlaybackRate: 1.0,
+                MPNowPlayingInfoPropertyIsLiveStream: true
+            ]
+            if !station.locationText.isEmpty {
+                info[MPMediaItemPropertyAlbumTitle] = station.locationText
+            }
+            if let artwork = artworkCache[radioArtworkKey(for: station)] {
+                info[MPMediaItemPropertyArtwork] = artwork
+            }
+            MPNowPlayingInfoCenter.default().nowPlayingInfo = info
+            updateRemoteCommandAvailability()
+            return
+        }
+
         guard let track = currentTrack else {
             MPNowPlayingInfoCenter.default().nowPlayingInfo = nil
             return
@@ -638,16 +1090,48 @@ final class PlayerService {
             info[MPMediaItemPropertyArtwork] = artwork
         }
         MPNowPlayingInfoCenter.default().nowPlayingInfo = info
+        updateRemoteCommandAvailability()
+    }
+
+    private func updateRemoteCommandAvailability() {
+        let center = MPRemoteCommandCenter.shared()
+        let musicEnabled = mode == .music
+        center.nextTrackCommand.isEnabled = musicEnabled
+        center.previousTrackCommand.isEnabled = musicEnabled
+        center.changePlaybackPositionCommand.isEnabled = musicEnabled
+        center.skipForwardCommand.isEnabled = musicEnabled
+        center.skipBackwardCommand.isEnabled = musicEnabled
+    }
+
+    private func radioArtworkKey(for station: RadioStation) -> String {
+        "radio:\(station.id)"
     }
 
     private func loadArtwork(for track: Track) {
         guard let url = track.artworkURL else { return }
-        if artworkCache[track.id] != nil { return }
-        if artworkTrackID == track.id, artworkTask != nil { return }
+        loadArtwork(url: url, cacheKey: track.id, target: .music(track.id))
+    }
+
+    private func loadRadioArtwork(for station: RadioStation) {
+        guard let url = station.favicon else { return }
+        loadArtwork(
+            url: url,
+            cacheKey: radioArtworkKey(for: station),
+            target: .radio(station.id)
+        )
+    }
+
+    private enum ArtworkTarget {
+        case music(String)
+        case radio(String)
+    }
+
+    private func loadArtwork(url: URL, cacheKey: String, target: ArtworkTarget) {
+        if artworkCache[cacheKey] != nil { return }
+        if artworkTrackID == cacheKey, artworkTask != nil { return }
 
         artworkTask?.cancel()
-        artworkTrackID = track.id
-        let trackID = track.id
+        artworkTrackID = cacheKey
 
         artworkTask = Task { [weak self] in
             guard let self else { return }
@@ -659,13 +1143,21 @@ final class PlayerService {
             }
             guard !Task.isCancelled else { return }
             let artwork = MPMediaItemArtwork(boundsSize: image.size) { _ in image }
-            self.artworkCache[trackID] = artwork
+            self.artworkCache[cacheKey] = artwork
             if self.artworkCache.count > 24 {
                 self.artworkCache.removeAll()
-                self.artworkCache[trackID] = artwork
+                self.artworkCache[cacheKey] = artwork
             }
-            if self.currentTrack?.id == trackID {
-                self.updateNowPlayingInfo()
+
+            switch target {
+            case .music(let id):
+                if self.mode == .music, self.currentTrack?.id == id {
+                    self.updateNowPlayingInfo()
+                }
+            case .radio(let id):
+                if self.mode == .radio, self.radioStation?.id == id {
+                    self.updateNowPlayingInfo()
+                }
             }
         }
     }
@@ -692,34 +1184,77 @@ final class PlayerService {
     // MARK: - Restore
 
     private func restoreState() {
-        guard let data = UserDefaults.standard.data(forKey: stateKey),
-              let snapshot = try? JSONDecoder().decode(PersistedPlayerState.self, from: data),
-              !snapshot.queue.isEmpty else {
+        guard let data = defaults.data(forKey: stateKey),
+              let snapshot = try? JSONDecoder().decode(PersistedPlayerState.self, from: data) else {
+            return
+        }
+        let restoredMode = snapshot.mode ?? .music
+        guard !snapshot.queue.isEmpty
+                || (restoredMode == .radio && snapshot.radioStation != nil) else {
             return
         }
 
         isRestoring = true
         queue = snapshot.queue
-        currentIndex = min(max(snapshot.currentIndex, 0), queue.count - 1)
+        currentIndex = queue.isEmpty ? 0 : min(max(snapshot.currentIndex, 0), queue.count - 1)
         repeatMode = snapshot.repeatMode
         isShuffled = snapshot.isShuffled
-        currentTrack = queue[currentIndex]
+        currentTrack = queue.indices.contains(currentIndex) ? queue[currentIndex] : nil
+        isPlaying = false
+        isBuffering = false
+
+        if restoredMode == .radio, let station = snapshot.radioStation {
+            mode = .radio
+            radioStation = station
+            radioMetadata = nil
+            isRadioReconnecting = false
+            radioReconnectAttempt = 0
+            currentTime = 0
+            duration = 0
+            resetShuffleOrder()
+
+            if let resume = snapshot.musicResume, !resume.queue.isEmpty {
+                musicResume = resume
+                shuffleOrder = resume.shuffleOrder
+                shufflePosition = min(max(resume.shufflePosition, 0), max(0, queue.count - 1))
+            } else if !queue.isEmpty {
+                musicResume = MusicResumeSnapshot(
+                    queue: queue,
+                    currentIndex: currentIndex,
+                    currentTime: snapshot.currentTime,
+                    duration: currentTrack?.duration ?? 0,
+                    isShuffled: isShuffled,
+                    repeatMode: repeatMode,
+                    shuffleOrder: shuffleOrder,
+                    shufflePosition: shufflePosition,
+                    wasPlaying: false
+                )
+            }
+
+            isRestoring = false
+            updateNowPlayingInfo()
+            loadRadioArtwork(for: station)
+            return
+        }
+
+        mode = .music
+        radioStation = nil
+        radioMetadata = nil
+        isRadioReconnecting = false
+        radioReconnectAttempt = 0
+        musicResume = nil
         duration = currentTrack?.duration ?? 0
         currentTime = max(0, snapshot.currentTime)
-        isPlaying = false
         resetShuffleOrder()
 
         if let stream = currentTrack?.primaryStream {
             let item = AVPlayerItem(url: stream.streamURL)
             player.replaceCurrentItem(with: item)
+            // Позицию восстанавливаем через pendingSeek: свежий AVPlayerItem
+            // ещё не готов, прямой seek до readyToPlay отбрасывается плеером.
+            // handleTimeUpdate применит pendingSeek, когда станет известна
+            // длительность элемента.
             pendingSeek = currentTime
-            if currentTime > 0 {
-                player.seek(
-                    to: CMTime(seconds: currentTime, preferredTimescale: 600),
-                    toleranceBefore: .zero,
-                    toleranceAfter: .zero
-                )
-            }
         }
         isRestoring = false
         updateNowPlayingInfo()
@@ -735,4 +1270,7 @@ private struct PersistedPlayerState: Codable {
     let repeatMode: RepeatMode
     let isShuffled: Bool
     let savedAt: Date
+    let mode: PlaybackMode?
+    let radioStation: RadioStation?
+    let musicResume: MusicResumeSnapshot?
 }

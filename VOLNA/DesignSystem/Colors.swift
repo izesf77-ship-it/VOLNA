@@ -294,7 +294,7 @@ struct VolnaScreenModifier: ViewModifier {
         if appState.bottomControlsHeight > 0 {
             return appState.bottomControlsHeight
         }
-        return appState.player.currentTrack != nil
+        return appState.player.hasNowPlaying
             ? VolnaLayout.contentBottomInsetWithPlayer
             : VolnaLayout.contentBottomInset
     }
