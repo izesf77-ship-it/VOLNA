@@ -14,7 +14,7 @@ on:
 jobs:
   build-and-test:
     name: Build and test on iOS Simulator
-    runs-on: macos-latest
+    runs-on: xcode-27
     timeout-minutes: 40
 
     env:
@@ -25,9 +25,20 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Show Xcode version
+      - name: Show Xcode, iOS SDK and Swift versions
         run: |
+          set -euo pipefail
           xcodebuild -version
+          xcodebuild -showsdks
+          xcrun --sdk iphoneos --show-sdk-version
+          xcrun --sdk iphonesimulator --show-sdk-version
+          swift --version
+          XCODE_VERSION="$(xcodebuild -version | awk '/Xcode/ {print $2; exit}')"
+          echo "Detected Xcode version: ${XCODE_VERSION}"
+          if [[ "${XCODE_VERSION}" != 27* ]]; then
+            echo "::error::Ожидается Xcode 27.x, но обнаружен ${XCODE_VERSION}"
+            exit 1
+          fi
           xcrun simctl list devices available | head -40
 
       - name: Install XcodeGen
@@ -180,7 +191,7 @@ jobs:
 
   build-ipa:
     name: Build signed IPA for iPhone
-    runs-on: macos-latest
+    runs-on: xcode-27
     needs: build-and-test
     timeout-minutes: 45
 
@@ -196,10 +207,20 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Show Xcode version
+      - name: Show Xcode, iOS SDK and Swift versions
         run: |
+          set -euo pipefail
           xcodebuild -version
-          xcodebuild -showsdks | head -40
+          xcodebuild -showsdks
+          xcrun --sdk iphoneos --show-sdk-version
+          xcrun --sdk iphonesimulator --show-sdk-version
+          swift --version
+          XCODE_VERSION="$(xcodebuild -version | awk '/Xcode/ {print $2; exit}')"
+          echo "Detected Xcode version: ${XCODE_VERSION}"
+          if [[ "${XCODE_VERSION}" != 27* ]]; then
+            echo "::error::Ожидается Xcode 27.x, но обнаружен ${XCODE_VERSION}"
+            exit 1
+          fi
 
       - name: Install XcodeGen
         run: brew install xcodegen
