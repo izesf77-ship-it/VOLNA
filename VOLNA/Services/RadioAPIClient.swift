@@ -153,18 +153,18 @@ actor RadioAPIClient: RadioAPIClienting {
         }
 
         let decoder = JSONDecoder()
-        if let list = try? decoder.decode([T].self, from: payload) {
-            return list
+        if let decoded = try? decoder.decode(T.self, from: payload) {
+            return decoded
         }
         // Некоторые зеркала Radio Browser исторически отдают массив в
         // обёртке { "value": [...] }. Поддерживаем оба формата.
-        if let envelope = try? decoder.decode(RadioCollection<T>.self, from: payload) {
+        if let envelope = try? decoder.decode(RadioEnvelope<T>.self, from: payload) {
             return envelope.value
         }
         throw RadioAPIError.payload
     }
 }
 
-private struct RadioCollection<T: Decodable>: Decodable {
-    let value: [T]
+private struct RadioEnvelope<T: Decodable>: Decodable {
+    let value: T
 }
