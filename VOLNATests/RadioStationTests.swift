@@ -152,10 +152,10 @@ final class RadioStationTests: XCTestCase {
 
     func testInternationalFilterRemovesRussianLanguageAndRussianSpeakingCountries() {
         let raw = [
-            RadioTestSupport.station(id: "russian-language", language: "russian,english", countryCode: "DE"),
-            RadioTestSupport.station(id: "russian-country", language: "german", countryCode: "RU"),
-            RadioTestSupport.station(id: "belarus", language: "english", countryCode: "BY"),
-            RadioTestSupport.station(id: "germany", language: "german", countryCode: "DE")
+            RadioTestSupport.station(id: "russian-language", countryCode: "DE", language: "russian,english"),
+            RadioTestSupport.station(id: "russian-country", countryCode: "RU", language: "german"),
+            RadioTestSupport.station(id: "belarus", countryCode: "BY", language: "english"),
+            RadioTestSupport.station(id: "germany", countryCode: "DE", language: "german")
         ]
 
         let filtered = RadioStationFilter.internationalOnly(raw)
