@@ -333,8 +333,8 @@ final class RadioService {
         currentStation: RadioStation,
         direction: Int // 1 для next, -1 для previous
     ) async -> RadioStation? {
-        let countryCode = currentStation.countryCode.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !countryCode.isEmpty else { return nil }
+        guard let countryCode = currentStation.countryCode?.trimmingCharacters(in: .whitespacesAndNewlines),
+              !countryCode.isEmpty else { return nil }
         
         do {
             let page = try await stations(for: .country(countryCode, limit: 50))
@@ -386,9 +386,9 @@ final class RadioService {
     
     /// Воспроизводит случайную станцию из той же страны (аналог shuffle).
     func playRandomStationInCountry(player: PlayerService) async {
-        guard let currentStation = player.radioStation else { return }
-        let countryCode = currentStation.countryCode.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !countryCode.isEmpty else { return }
+        guard let currentStation = player.radioStation,
+              let countryCode = currentStation.countryCode?.trimmingCharacters(in: .whitespacesAndNewlines),
+              !countryCode.isEmpty else { return }
         
         do {
             let page = try await stations(for: .country(countryCode, limit: 50))

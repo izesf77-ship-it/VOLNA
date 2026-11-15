@@ -240,8 +240,7 @@ struct TrackDetailView: View {
                 ScrollView(.horizontal, showsIndicators: false) {
                     HStack(spacing: 12) {
                         ForEach(countryStations.prefix(8)) { station in
-                            RadioStationCard(station: station)
-                                .frame(width: 160)
+                            RadioStationCard(station: station, width: 160)
                         }
                     }
                     .padding(.horizontal, 2)
@@ -308,48 +307,6 @@ struct TrackDetailView: View {
         return ""
     }
 }
-
-// MARK: - Radio station card
-
-private struct RadioStationCard: View {
-    @Environment(AppState.self) private var appState
-    let station: RadioStation
-    
-    var body: some View {
-        Button {
-            appState.player.playRadio(station)
-        } label: {
-            VStack(alignment: .leading, spacing: 8) {
-                ArtworkView(
-                    url: station.favicon,
-                    size: 160,
-                    cornerRadius: 16,
-                    placeholderIcon: "dot.radiowaves.left.and.right"
-                )
-                .frame(height: 160)
-                
-                VStack(alignment: .leading, spacing: 4) {
-                    Text(station.displayName)
-                        .font(.volnaBody(14, weight: .semibold))
-                        .foregroundStyle(Color.volnaTextPrimary)
-                        .lineLimit(2)
-                        .multilineTextAlignment(.leading)
-                    
-                    if let genre = station.genreDisplay {
-                        Text(genre)
-                            .font(.volnaBody(11))
-                            .foregroundStyle(Color.volnaTextSecondary)
-                            .lineLimit(1)
-                    }
-                }
-                .frame(maxWidth: .infinity, alignment: .leading)
-                .padding(.horizontal, 8)
-            }
-        }
-        .buttonStyle(.plain)
-    }
-}
-
 #Preview {
     NavigationStack {
         TrackDetailView(
@@ -359,9 +316,9 @@ private struct RadioStationCard: View {
                 artist: "Test Artist",
                 album: "Test Album",
                 artworkURL: nil,
-                streamURL: URL(string: "https://example.com")!,
                 duration: 180,
-                providerID: "mock"
+                providerID: "mock",
+                sourceID: "mock-source"
             )
         )
         .environment(AppState())
