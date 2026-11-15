@@ -283,8 +283,8 @@ struct TrackDetailView: View {
         defer { isLoadingStations = false }
         
         do {
-            let stations = try await appState.radio.fetchStations(filter: .country(countryCode, limit: 20))
-            countryStations = stations
+            let page = try await appState.radio.stations(for: .country(countryCode, limit: 20))
+            countryStations = page.stations
                 .filter { $0.isPlayable }
                 .shuffled()
                 .prefix(8)
