@@ -152,6 +152,94 @@ VOLNA не обходит DRM, не использует пиратские ис
 
 ---
 
+## Решённые критические проблемы
+
+В процессе разработки и настройки CI/CD были выявлены и исправлены критические проблемы, которые блокировали успешную сборку:
+
+### 1. GitHub Actions: Broken Pipe в simctl (Commit 44ed0ef)
+
+**Проблема**: Workflow падал с exit code 134 на этапе проверки Xcode ДО компиляции Swift.
+
+**Причина**: 
+```bash
+xcrun simctl list devices available | head -40
+```
+Команда `head -40` закрывала pipe после чтения 40 строк, но `xcrun simctl` продолжал писать → получал SIGPIPE → `NSFileHandleOperationException` → крэш раннера.
+
+**Решение**:
+```bash
+xcrun simctl list devices available | head -n 40 || true
+```
+Добавлено `|| true` для игнорирования SIGPIPE.
+
+---
+
+### 2. Swift Compilation: Track Initializer (Commit 842e7d4)
+
+**Проблема**: `TrackDetailView.swift:362-363` — extra argument 'streamURL', missing 'sourceID'.
+
+**Причина**: Preview использовал несуществующий параметр `streamURL` вместо обязательного `sourceID`.
+
+**Решение**:
+```swift
+// Было: Track(streamURL: mockURL, ...)
+// Стало: Track(sourceID: mockSourceID, ...)
+```
+
+---
+
+### 3. Swift Compilation: Optional String Unwrap (Commit 842e7d4)
+
+**Проблема**: `RadioService.swift:336, 389` — value of optional type 'String?' must be unwrapped.
+
+**Причина**: `countryCode` имеет тип `String?`, но использовался без unwrap в методах `findNextStationInCountry` и `playRandomStationInCountry`.
+
+**Решение**:
+```swift
+guard let code = countryCode else { return }
+let trimmed = code.trimmingCharacters(in: .whitespacesAndNewlines)
+```
+
+---
+
+### 4. Swift Compilation: Duplicate Component (Commit 842e7d4)
+
+**Проблема**: `TrackDetailView.swift:314` — invalid redeclaration of 'RadioStationCard'.
+
+**Причина**: В TrackDetailView была 43-строчная копия компонента `RadioStationCard`, который уже существовал в `RadioComponents.swift`.
+
+**Решение**: Удалён дубликат, используется существующий компонент с параметром `width: 160`.
+
+---
+
+### 5. Wrong API Method Call (Commit 9674c58)
+
+**Проблема**: `TrackDetailView.swift:286` — метод `fetchStations(filter:)` не существует в `RadioService`.
+
+**Причина**: Использовался несуществующий метод API.
+
+**Решение**:
+```swift
+// Было: appState.radio.fetchStations(filter: .country(code, limit: 20))
+// Стало: 
+let page = await appState.radio.stations(for: .country(code, limit: 20))
+let stations = page.stations
+```
+
+---
+
+### Результат
+
+После исправления всех проблем:
+- ✅ GitHub Actions успешно собирает проект на Xcode 27
+- ✅ Все unit-тесты проходят
+- ✅ Unsigned IPA создаётся и верифицируется
+- ✅ Simulator screenshots захватываются автоматически
+
+Подробный отчёт о сборке: [GitHub Actions Run #43748857814](https://github.com/izesf77-ship-it/VOLNA/actions/runs/43748857814)
+
+---
+
 ## Документация
 
 - [Сборка и CI](Documentation/BUILD.md)
