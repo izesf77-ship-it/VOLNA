@@ -39,7 +39,7 @@ jobs:
             echo "::error::Ожидается Xcode 27.x, но обнаружен ${XCODE_VERSION}"
             exit 1
           fi
-          xcrun simctl list devices available | head -40
+          xcrun simctl list devices available | head -n 40 || true
 
       - name: Install XcodeGen
         run: brew install xcodegen
