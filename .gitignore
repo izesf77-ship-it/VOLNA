@@ -46,3 +46,7 @@ config.json
 *.swp
 *.swo
 *~
+
+# Claude Code / Kiro artifacts
+.opencode/
+.claude/
