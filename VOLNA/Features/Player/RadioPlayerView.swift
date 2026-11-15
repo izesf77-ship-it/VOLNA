@@ -262,7 +262,9 @@ struct RadioPlayerView: View {
             // Main playback controls with navigation
             HStack(spacing: 18) {
                 Button {
-                    appState.radio.playPreviousStationInCountry(player: player)
+                    Task {
+                        await appState.radio.playPreviousStationInCountry(player: player)
+                    }
                 } label: {
                     Image(systemName: "backward.fill")
                         .font(.system(size: 26, weight: .semibold))
@@ -301,7 +303,9 @@ struct RadioPlayerView: View {
                 .accessibilityLabel(player.isPlaying ? "Пауза" : "Воспроизвести")
 
                 Button {
-                    appState.radio.playNextStationInCountry(player: player)
+                    Task {
+                        await appState.radio.playNextStationInCountry(player: player)
+                    }
                 } label: {
                     Image(systemName: "forward.fill")
                         .font(.system(size: 26, weight: .semibold))
@@ -339,7 +343,9 @@ struct RadioPlayerView: View {
                 )
 
                 Button {
-                    appState.radio.playRandomStationInCountry(player: player)
+                    Task {
+                        await appState.radio.playRandomStationInCountry(player: player)
+                    }
                 } label: {
                     Image(systemName: "shuffle")
                         .font(.system(size: 20, weight: .semibold))

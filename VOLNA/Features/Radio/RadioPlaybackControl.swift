@@ -9,11 +9,7 @@ struct RadioPlaybackControl: View {
     private var radio: RadioService { appState.radio }
     
     var body: some View {
-        guard player.mode == .radio, let station = player.radioStation else {
-            return AnyView(EmptyView())
-        }
-        
-        return AnyView(
+        if player.mode == .radio, let station = player.radioStation {
             VStack(alignment: .leading, spacing: 14) {
                 HStack(alignment: .top, spacing: 12) {
                     VStack(alignment: .leading, spacing: 4) {
@@ -36,7 +32,7 @@ struct RadioPlaybackControl: View {
                 
                 currentStationCard(station)
             }
-        )
+        }
     }
     
     private func currentStationCard(_ station: RadioStation) -> some View {
