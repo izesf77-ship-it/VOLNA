@@ -14,7 +14,7 @@ on:
 jobs:
   build-and-test:
     name: Build and test on iOS Simulator
-    runs-on: xcode-27-arm64
+    runs-on: xcode-27
     timeout-minutes: 40
 
     env:
@@ -191,7 +191,7 @@ jobs:
 
   build-unsigned-ipa:
     name: Build unsigned IPA for sideloading
-    runs-on: xcode-27-arm64
+    runs-on: xcode-27
     needs: build-and-test
     timeout-minutes: 45
 
