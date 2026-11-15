@@ -46,6 +46,7 @@ struct SearchView: View {
             .navigationDestination(for: Artist.self) { ArtistView(artist: $0) }
             .navigationDestination(for: Album.self) { AlbumView(album: $0) }
             .navigationDestination(for: Playlist.self) { PlaylistDetailView(playlistID: $0.id) }
+            .navigationDestination(for: Track.self) { TrackDetailView(track: $0) }
             .navigationDestination(isPresented: $state.showSettings) { SettingsView() }
             .task {
                 await appState.catalog.loadIfNeeded()

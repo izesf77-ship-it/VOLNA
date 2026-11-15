@@ -443,6 +443,7 @@ struct TrackRow: View {
     var showFavorite = true
     var showArtwork = true
     var showProvider = true
+    var enableNavigation = false // Enable tap-to-navigate to track detail
 
     @State private var showPlaylistDialog = false
 
@@ -451,57 +452,69 @@ struct TrackRow: View {
         // играет. Подсвечивать его как активный трек нельзя.
         appState.player.mode == .music && appState.player.currentTrack?.id == track.id
     }
+    
+    private var trackContent: some View {
+        HStack(spacing: 12) {
+            if showArtwork {
+                ZStack {
+                    ArtworkView(url: track.artworkURL, size: 52, cornerRadius: 10)
+                    if isCurrent {
+                        RoundedRectangle(cornerRadius: 10, style: .continuous)
+                            .fill(.black.opacity(0.5))
+                            .frame(width: 52, height: 52)
+                        Image(systemName: appState.player.isPlaying ? "waveform" : "pause.fill")
+                            .font(.system(size: 16, weight: .bold))
+                            .foregroundStyle(.white)
+                            .symbolEffect(.variableColor.iterative, isActive: appState.player.isPlaying)
+                    }
+                }
+            }
+
+            VStack(alignment: .leading, spacing: 4) {
+                Text(track.title)
+                    .font(.system(size: 15, weight: isCurrent ? .semibold : .medium, design: .default))
+                    .foregroundStyle(isCurrent ? Color.volnaPurple : Color.volnaTextPrimary)
+                    .lineLimit(1)
+
+                HStack(spacing: 6) {
+                    Text(track.artist)
+                        .font(.system(size: 13, weight: .regular, design: .default))
+                        .foregroundStyle(Color.volnaTextSecondary)
+                        .lineLimit(1)
+
+                    if showProvider {
+                        ProviderBadge(providerID: track.providerID)
+                    }
+                }
+            }
+
+            Spacer(minLength: 8)
+
+            if let duration = track.durationFormatted {
+                Text(duration)
+                    .font(.system(size: 12, weight: .medium, design: .monospaced))
+                    .foregroundStyle(Color.volnaTextTertiary)
+            }
+        }
+        .contentShape(Rectangle())
+    }
 
     var body: some View {
         HStack(spacing: 12) {
-            Button {
-                appState.play(track, in: queue ?? [track])
-            } label: {
-                HStack(spacing: 12) {
-                    if showArtwork {
-                        ZStack {
-                            ArtworkView(url: track.artworkURL, size: 52, cornerRadius: 10)
-                            if isCurrent {
-                                RoundedRectangle(cornerRadius: 10, style: .continuous)
-                                    .fill(.black.opacity(0.5))
-                                    .frame(width: 52, height: 52)
-                                Image(systemName: appState.player.isPlaying ? "waveform" : "pause.fill")
-                                    .font(.system(size: 16, weight: .bold))
-                                    .foregroundStyle(.white)
-                                    .symbolEffect(.variableColor.iterative, isActive: appState.player.isPlaying)
-                            }
-                        }
+            Group {
+                if enableNavigation {
+                    NavigationLink(value: track) {
+                        trackContent
                     }
-
-                    VStack(alignment: .leading, spacing: 4) {
-                        Text(track.title)
-                            .font(.system(size: 15, weight: isCurrent ? .semibold : .medium, design: .default))
-                            .foregroundStyle(isCurrent ? Color.volnaPurple : Color.volnaTextPrimary)
-                            .lineLimit(1)
-
-                        HStack(spacing: 6) {
-                            Text(track.artist)
-                                .font(.system(size: 13, weight: .regular, design: .default))
-                                .foregroundStyle(Color.volnaTextSecondary)
-                                .lineLimit(1)
-
-                            if showProvider {
-                                ProviderBadge(providerID: track.providerID)
-                            }
-                        }
+                } else {
+                    Button {
+                        appState.play(track, in: queue ?? [track])
+                    } label: {
+                        trackContent
                     }
-
-                    Spacer(minLength: 8)
-
-                    if let duration = track.durationFormatted {
-                        Text(duration)
-                            .font(.system(size: 12, weight: .medium, design: .monospaced))
-                            .foregroundStyle(Color.volnaTextTertiary)
-                    }
+                    .buttonStyle(.plain)
                 }
-                .contentShape(Rectangle())
             }
-            .buttonStyle(.plain)
 
             if showFavorite {
                 Button {

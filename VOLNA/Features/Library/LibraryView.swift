@@ -26,6 +26,7 @@ struct LibraryView: View {
             .navigationDestination(for: Playlist.self) { playlist in
                 PlaylistDetailView(playlistID: playlist.id)
             }
+            .navigationDestination(for: Track.self) { TrackDetailView(track: $0) }
             .navigationDestination(isPresented: $state.showSettings) { SettingsView() }
             .alert("Новый плейлист", isPresented: $showCreatePlaylist) {
                 TextField("Название", text: $newPlaylistTitle)

@@ -1049,6 +1049,13 @@ final class PlayerService {
     }
 
     private func updateNowPlayingInfo() {
+        // Создаём и активируем NSUserActivity для привязки Now Playing к VOLNA
+        let activity = NSUserActivity(activityType: "com.volna.app.nowplaying")
+        activity.title = "VOLNA Now Playing"
+        activity.isEligibleForHandoff = true
+        activity.isEligibleForSearch = false
+        activity.becomeCurrent()
+        
         if mode == .radio, let station = radioStation {
             var info: [String: Any] = [
                 MPMediaItemPropertyTitle: station.displayName,
@@ -1070,6 +1077,7 @@ final class PlayerService {
 
         guard let track = currentTrack else {
             MPNowPlayingInfoCenter.default().nowPlayingInfo = nil
+            activity.invalidate()
             return
         }
 

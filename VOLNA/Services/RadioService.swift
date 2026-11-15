@@ -312,4 +312,105 @@ final class RadioService {
         }
         return "Не удалось загрузить каталог радио. Проверьте соединение и повторите попытку."
     }
+    
+    // MARK: - Country-based station switching
+    
+    /// История недавно проигранных станций для избежания повторов.
+    private var recentStationHistory: [String] = []
+    private let maxHistorySize = 10
+    
+    private func addToHistory(_ stationID: String) {
+        recentStationHistory.removeAll(where: { $0 == stationID })
+        recentStationHistory.insert(stationID, at: 0)
+        if recentStationHistory.count > maxHistorySize {
+            recentStationHistory.removeLast()
+        }
+    }
+    
+    /// Находит следующую станцию той же страны, что и текущая.
+    /// Исключает текущую станцию и недавно прослушанные.
+    private func findNextStationInCountry(
+        currentStation: RadioStation,
+        direction: Int // 1 для next, -1 для previous
+    ) async -> RadioStation? {
+        let countryCode = currentStation.countryCode.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !countryCode.isEmpty else { return nil }
+        
+        do {
+            let page = try await stations(for: .country(countryCode, limit: 50))
+            var candidates = page.stations.filter { station in
+                station.id != currentStation.id &&
+                station.isPlayable &&
+                !recentStationHistory.contains(station.id)
+            }
+            
+            // Если после фильтрации не осталось станций, берём любые кроме текущей
+            if candidates.isEmpty {
+                candidates = page.stations.filter { $0.id != currentStation.id && $0.isPlayable }
+            }
+            
+            guard !candidates.isEmpty else { return nil }
+            
+            // Для previous берём с конца, для next с начала
+            if direction < 0 {
+                return candidates.last
+            } else {
+                return candidates.first
+            }
+        } catch {
+            return nil
+        }
+    }
+    
+    /// Воспроизводит следующую станцию из той же страны.
+    func playNextStationInCountry(player: PlayerService) async {
+        guard let currentStation = player.radioStation else { return }
+        guard let next = await findNextStationInCountry(currentStation: currentStation, direction: 1) else {
+            return
+        }
+        
+        addToHistory(currentStation.id)
+        player.playRadio(next)
+    }
+    
+    /// Воспроизводит предыдущую станцию из той же страны.
+    func playPreviousStationInCountry(player: PlayerService) async {
+        guard let currentStation = player.radioStation else { return }
+        guard let previous = await findNextStationInCountry(currentStation: currentStation, direction: -1) else {
+            return
+        }
+        
+        addToHistory(currentStation.id)
+        player.playRadio(previous)
+    }
+    
+    /// Воспроизводит случайную станцию из той же страны (аналог shuffle).
+    func playRandomStationInCountry(player: PlayerService) async {
+        guard let currentStation = player.radioStation else { return }
+        let countryCode = currentStation.countryCode.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !countryCode.isEmpty else { return }
+        
+        do {
+            let page = try await stations(for: .country(countryCode, limit: 50))
+            var candidates = page.stations.filter { station in
+                station.id != currentStation.id &&
+                station.isPlayable &&
+                !recentStationHistory.contains(station.id)
+            }
+            
+            if candidates.isEmpty {
+                candidates = page.stations.filter { $0.id != currentStation.id && $0.isPlayable }
+            }
+            
+            guard !candidates.isEmpty else { return }
+            
+            if let random = candidates.randomElement() {
+                addToHistory(currentStation.id)
+                player.playRadio(random)
+            }
+        } catch {
+            return
+        }
+    }
 }
+

@@ -19,6 +19,12 @@ struct RadioView: View {
                 VStack(alignment: .leading, spacing: VolnaLayout.sectionSpacing) {
                     header
                         .padding(.top, 6)
+                    
+                    // Добавляем контрол воспроизведения если радио играет
+                    if appState.player.mode == .radio, appState.player.radioStation != nil {
+                        RadioPlaybackControl()
+                    }
+                    
                     searchLink
 
                     if let error = radio.feedError, radio.popular.isEmpty {

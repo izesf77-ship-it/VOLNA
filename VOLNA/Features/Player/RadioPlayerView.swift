@@ -258,64 +258,112 @@ struct RadioPlayerView: View {
     // MARK: - Controls
 
     private func controls(station: RadioStation) -> some View {
-        HStack(spacing: 30) {
-            Button {
-                appState.radioFavorites.toggle(station)
-            } label: {
-                Image(systemName: appState.radioFavorites.isFavorite(station) ? "heart.fill" : "heart")
-                    .font(.system(size: 22, weight: .medium))
-                    .foregroundStyle(
-                        appState.radioFavorites.isFavorite(station)
-                            ? Color.volnaMagenta
-                            : Color.volnaTextSecondary
-                    )
-                    .frame(width: 56, height: 56)
-                    .background(Color.white.opacity(0.07), in: Circle())
-                    .symbolEffect(.bounce, value: appState.radioFavorites.isFavorite(station))
-            }
-            .buttonStyle(.plain)
-            .accessibilityLabel(
-                appState.radioFavorites.isFavorite(station)
-                    ? "Убрать из избранного"
-                    : "В избранное"
-            )
+        VStack(spacing: 20) {
+            // Main playback controls with navigation
+            HStack(spacing: 18) {
+                Button {
+                    appState.radio.playPreviousStationInCountry(player: player)
+                } label: {
+                    Image(systemName: "backward.fill")
+                        .font(.system(size: 26, weight: .semibold))
+                        .foregroundStyle(Color.volnaTextPrimary)
+                        .frame(width: 60, height: 60)
+                        .background(Color.white.opacity(0.09), in: Circle())
+                }
+                .buttonStyle(.plain)
+                .disabled(player.isBuffering || player.isRadioReconnecting)
+                .opacity(player.isBuffering || player.isRadioReconnecting ? 0.4 : 1)
+                .accessibilityLabel("Предыдущая станция в стране")
 
-            Button {
-                player.togglePlayPause()
-            } label: {
-                ZStack {
-                    Circle()
-                        .fill(Color.white)
-                        .frame(width: 82, height: 82)
-                        .shadow(color: .white.opacity(0.18), radius: 18, y: 6)
+                Button {
+                    player.togglePlayPause()
+                } label: {
+                    ZStack {
+                        Circle()
+                            .fill(Color.white)
+                            .frame(width: 82, height: 82)
+                            .shadow(color: .white.opacity(0.18), radius: 18, y: 6)
 
-                    if player.isBuffering && player.isPlaying {
-                        ProgressView()
-                            .tint(.black)
-                            .scaleEffect(1.15)
-                    } else {
-                        Image(systemName: player.isPlaying ? "pause.fill" : "play.fill")
-                            .font(.system(size: 32, weight: .bold))
-                            .foregroundStyle(.black)
-                            .offset(x: player.isPlaying ? 0 : 2)
-                            .contentTransition(.symbolEffect(.replace))
+                        if player.isBuffering && player.isPlaying {
+                            ProgressView()
+                                .tint(.black)
+                                .scaleEffect(1.15)
+                        } else {
+                            Image(systemName: player.isPlaying ? "pause.fill" : "play.fill")
+                                .font(.system(size: 32, weight: .bold))
+                                .foregroundStyle(.black)
+                                .offset(x: player.isPlaying ? 0 : 2)
+                                .contentTransition(.symbolEffect(.replace))
+                        }
                     }
                 }
-            }
-            .buttonStyle(.plain)
-            .accessibilityLabel(player.isPlaying ? "Пауза" : "Воспроизвести")
+                .buttonStyle(.plain)
+                .accessibilityLabel(player.isPlaying ? "Пауза" : "Воспроизвести")
 
-            Button {
-                player.retryRadioPlayback()
-            } label: {
-                Image(systemName: "arrow.clockwise")
-                    .font(.system(size: 20, weight: .semibold))
-                    .foregroundStyle(Color.volnaTextSecondary)
-                    .frame(width: 56, height: 56)
-                    .background(Color.white.opacity(0.07), in: Circle())
+                Button {
+                    appState.radio.playNextStationInCountry(player: player)
+                } label: {
+                    Image(systemName: "forward.fill")
+                        .font(.system(size: 26, weight: .semibold))
+                        .foregroundStyle(Color.volnaTextPrimary)
+                        .frame(width: 60, height: 60)
+                        .background(Color.white.opacity(0.09), in: Circle())
+                }
+                .buttonStyle(.plain)
+                .disabled(player.isBuffering || player.isRadioReconnecting)
+                .opacity(player.isBuffering || player.isRadioReconnecting ? 0.4 : 1)
+                .accessibilityLabel("Следующая станция в стране")
             }
-            .buttonStyle(.plain)
-            .accessibilityLabel("Переподключить поток")
+
+            // Secondary controls
+            HStack(spacing: 24) {
+                Button {
+                    appState.radioFavorites.toggle(station)
+                } label: {
+                    Image(systemName: appState.radioFavorites.isFavorite(station) ? "heart.fill" : "heart")
+                        .font(.system(size: 20, weight: .medium))
+                        .foregroundStyle(
+                            appState.radioFavorites.isFavorite(station)
+                                ? Color.volnaMagenta
+                                : Color.volnaTextSecondary
+                        )
+                        .frame(width: 50, height: 50)
+                        .background(Color.white.opacity(0.06), in: Circle())
+                        .symbolEffect(.bounce, value: appState.radioFavorites.isFavorite(station))
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel(
+                    appState.radioFavorites.isFavorite(station)
+                        ? "Убрать из избранного"
+                        : "В избранное"
+                )
+
+                Button {
+                    appState.radio.playRandomStationInCountry(player: player)
+                } label: {
+                    Image(systemName: "shuffle")
+                        .font(.system(size: 20, weight: .semibold))
+                        .foregroundStyle(Color.volnaTextSecondary)
+                        .frame(width: 50, height: 50)
+                        .background(Color.white.opacity(0.06), in: Circle())
+                }
+                .buttonStyle(.plain)
+                .disabled(player.isBuffering || player.isRadioReconnecting)
+                .opacity(player.isBuffering || player.isRadioReconnecting ? 0.4 : 1)
+                .accessibilityLabel("Случайная станция в стране")
+
+                Button {
+                    player.retryRadioPlayback()
+                } label: {
+                    Image(systemName: "arrow.clockwise")
+                        .font(.system(size: 19, weight: .semibold))
+                        .foregroundStyle(Color.volnaTextSecondary)
+                        .frame(width: 50, height: 50)
+                        .background(Color.white.opacity(0.06), in: Circle())
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel("Переподключить поток")
+            }
         }
         .padding(.vertical, 4)
     }

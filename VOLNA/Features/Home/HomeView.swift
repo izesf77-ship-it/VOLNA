@@ -89,6 +89,7 @@ struct HomeView: View {
             .navigationDestination(for: Artist.self) { ArtistView(artist: $0) }
             .navigationDestination(for: Album.self) { AlbumView(album: $0) }
             .navigationDestination(for: Playlist.self) { PlaylistDetailView(playlistID: $0.id) }
+            .navigationDestination(for: Track.self) { TrackDetailView(track: $0) }
             .navigationDestination(isPresented: $state.showSettings) { SettingsView() }
             .task(id: appState.screenshotScrollToken) {
                 guard appState.screenshotScrollToken > 0, !appState.catalog.isEmpty else { return }

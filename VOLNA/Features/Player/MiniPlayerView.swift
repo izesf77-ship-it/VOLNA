@@ -94,6 +94,25 @@ struct MiniPlayerView: View {
                 .buttonStyle(.plain)
 
                 HStack(spacing: 4) {
+                    // Для радио - переключение станций внутри страны
+                    if isRadio {
+                        Button {
+                            Task {
+                                await appState.radio.playPreviousStationInCountry(player: player)
+                            }
+                        } label: {
+                            Image(systemName: "backward.fill")
+                                .font(.system(size: 18, weight: .semibold))
+                                .foregroundStyle(Color.volnaTextSecondary)
+                                .frame(width: 40, height: 44)
+                                .contentShape(Rectangle())
+                        }
+                        .buttonStyle(.plain)
+                        .disabled(player.isBuffering || player.isRadioReconnecting)
+                        .opacity((player.isBuffering || player.isRadioReconnecting) ? 0.4 : 1.0)
+                        .accessibilityLabel("Предыдущая станция")
+                    }
+                    
                     Button {
                         player.togglePlayPause()
                     } label: {
@@ -108,6 +127,22 @@ struct MiniPlayerView: View {
                     .accessibilityLabel(player.isPlaying ? "Пауза" : "Воспроизвести")
 
                     if isRadio, let station {
+                        Button {
+                            Task {
+                                await appState.radio.playNextStationInCountry(player: player)
+                            }
+                        } label: {
+                            Image(systemName: "forward.fill")
+                                .font(.system(size: 18, weight: .semibold))
+                                .foregroundStyle(Color.volnaTextSecondary)
+                                .frame(width: 40, height: 44)
+                                .contentShape(Rectangle())
+                        }
+                        .buttonStyle(.plain)
+                        .disabled(player.isBuffering || player.isRadioReconnecting)
+                        .opacity((player.isBuffering || player.isRadioReconnecting) ? 0.4 : 1.0)
+                        .accessibilityLabel("Следующая станция")
+                        
                         Button {
                             appState.radioFavorites.toggle(station)
                         } label: {
