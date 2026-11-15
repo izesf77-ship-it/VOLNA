@@ -15,7 +15,7 @@ struct RadioView: View {
 
     var body: some View {
         NavigationStack {
-            ScrollView(showsIndicators: false) {
+            ScrollView(showsIndicators: true) {
                 VStack(alignment: .leading, spacing: VolnaLayout.sectionSpacing) {
                     header
                         .padding(.top, 6)
@@ -185,13 +185,14 @@ struct RadioView: View {
                 destination
             }
 
-            ScrollView(.horizontal, showsIndicators: false) {
+            ScrollView(.horizontal, showsIndicators: true) {
                 LazyHStack(alignment: .top, spacing: 14) {
                     ForEach(Array(stations.prefix(12))) { station in
                         RadioStationCard(station: station, width: 152)
                     }
                 }
                 .padding(.vertical, 2)
+                .padding(.trailing, 20)
             }
             .scrollClipDisabled()
         }
@@ -223,13 +224,14 @@ struct RadioView: View {
             if favoriteStations.isEmpty {
                 favoritesEmptyCard
             } else {
-                ScrollView(.horizontal, showsIndicators: false) {
+                ScrollView(.horizontal, showsIndicators: true) {
                     LazyHStack(alignment: .top, spacing: 14) {
                         ForEach(Array(favoriteStations.prefix(12))) { station in
                             RadioStationCard(station: station, width: 152)
                         }
                     }
                     .padding(.vertical, 2)
+                    .padding(.trailing, 20)
                 }
                 .scrollClipDisabled()
             }
@@ -278,7 +280,7 @@ struct RadioView: View {
                     }
                 }
             } else {
-                ScrollView(.horizontal, showsIndicators: false) {
+                ScrollView(.horizontal, showsIndicators: true) {
                     LazyHStack(spacing: 10) {
                         ForEach(topCountries) { country in
                             NavigationLink {
@@ -294,6 +296,7 @@ struct RadioView: View {
                         }
                     }
                     .padding(.vertical, 2)
+                    .padding(.trailing, 20)
                 }
                 .scrollClipDisabled()
             }

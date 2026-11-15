@@ -15,7 +15,7 @@ struct AlbumView: View {
     }
 
     var body: some View {
-        ScrollView(showsIndicators: false) {
+        ScrollView(showsIndicators: true) {
             VStack(alignment: .leading, spacing: 20) {
                 header
 

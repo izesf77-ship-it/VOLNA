@@ -8,7 +8,7 @@ struct LibraryView: View {
     var body: some View {
         @Bindable var state = appState
         NavigationStack {
-            ScrollView(showsIndicators: false) {
+            ScrollView(showsIndicators: true) {
                 VStack(alignment: .leading, spacing: VolnaLayout.sectionSpacing) {
                     header
                         .padding(.top, 8)
@@ -129,12 +129,13 @@ struct LibraryView: View {
                     showCreatePlaylist = true
                 }
             } else {
-                ScrollView(.horizontal, showsIndicators: false) {
+                ScrollView(.horizontal, showsIndicators: true) {
                     LazyHStack(alignment: .top, spacing: 14) {
                         ForEach(appState.library.playlists) { playlist in
                             PlaylistCard(playlist: playlist)
                         }
                     }
+                    .padding(.trailing, 20)
                 }
                 .scrollClipDisabled()
             }

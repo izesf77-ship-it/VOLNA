@@ -22,7 +22,7 @@ struct SearchView: View {
     var body: some View {
         @Bindable var state = appState
         NavigationStack {
-            ScrollView(showsIndicators: false) {
+            ScrollView(showsIndicators: true) {
                 VStack(alignment: .leading, spacing: 20) {
                     header
                     searchField
@@ -101,7 +101,7 @@ struct SearchView: View {
                 .font(.system(size: 17, weight: .medium))
                 .foregroundStyle(isFocused ? Color.volnaPurple : Color.volnaTextTertiary)
 
-            TextField("Песня, исполнитель, альбом или плейлист", text: $query)
+            TextField("Название или исполнитель", text: $query)
                 .focused($isFocused)
                 .font(VolnaFont.custom(16, weight: .regular, relativeTo: .body))
                 .foregroundStyle(Color.volnaTextPrimary)
@@ -145,7 +145,7 @@ struct SearchView: View {
     }
 
     private var filterRow: some View {
-        ScrollView(.horizontal, showsIndicators: false) {
+        ScrollView(.horizontal, showsIndicators: true) {
             HStack(spacing: 8) {
                 VolnaChip(title: "Все", icon: "globe", isSelected: filters.language == nil) {
                     filters.language = nil
@@ -204,7 +204,7 @@ struct SearchView: View {
                 appState.searchHistory.clear()
             }
 
-            ScrollView(.horizontal, showsIndicators: false) {
+            ScrollView(.horizontal, showsIndicators: true) {
                 HStack(spacing: 8) {
                     ForEach(appState.searchHistory.queries, id: \.self) { item in
                         HStack(spacing: 4) {
@@ -303,13 +303,14 @@ struct SearchView: View {
                 }
             }
 
-            ScrollView(.horizontal, showsIndicators: false) {
+            ScrollView(.horizontal, showsIndicators: true) {
                 LazyHStack(alignment: .top, spacing: 14) {
                     ForEach(Array(appState.catalog.recentAlbums.prefix(10))) { album in
                         AlbumCard(album: album, width: 150)
                     }
                 }
                 .padding(.vertical, 2)
+                .padding(.trailing, 20)
             }
             .scrollClipDisabled()
         }
@@ -341,13 +342,14 @@ struct SearchView: View {
                 }
             }
 
-            ScrollView(.horizontal, showsIndicators: false) {
+            ScrollView(.horizontal, showsIndicators: true) {
                 LazyHStack(alignment: .top, spacing: 14) {
                     ForEach(tracks) { track in
                         TrackCard(track: track, queue: tracks, width: 150)
                     }
                 }
                 .padding(.vertical, 2)
+                .padding(.trailing, 20)
             }
             .scrollClipDisabled()
         }
@@ -457,7 +459,7 @@ struct SearchView: View {
     }
 
     private var providerStats: some View {
-        ScrollView(.horizontal, showsIndicators: false) {
+        ScrollView(.horizontal, showsIndicators: true) {
             HStack(spacing: 8) {
                 ForEach(service.stats) { stat in
                     HStack(spacing: 6) {
@@ -517,13 +519,14 @@ struct SearchView: View {
     private var playlistMatchesSection: some View {
         VStack(alignment: .leading, spacing: 14) {
             SectionHeader(title: "Ваши плейлисты", subtitle: "Совпадения в медиатеке")
-            ScrollView(.horizontal, showsIndicators: false) {
+            ScrollView(.horizontal, showsIndicators: true) {
                 LazyHStack(alignment: .top, spacing: 14) {
                     ForEach(playlistMatches) { playlist in
                         PlaylistCard(playlist: playlist, width: 142)
                     }
                 }
                 .padding(.vertical, 2)
+                .padding(.trailing, 20)
             }
             .scrollClipDisabled()
         }
@@ -532,13 +535,14 @@ struct SearchView: View {
     private var localAlbumsSection: some View {
         VStack(alignment: .leading, spacing: 14) {
             SectionHeader(title: "Альбомы в каталоге", subtitle: "Совпадения по названию или исполнителю")
-            ScrollView(.horizontal, showsIndicators: false) {
+            ScrollView(.horizontal, showsIndicators: true) {
                 LazyHStack(alignment: .top, spacing: 14) {
                     ForEach(catalogAlbums) { album in
                         AlbumCard(album: album, width: 142)
                     }
                 }
                 .padding(.vertical, 2)
+                .padding(.trailing, 20)
             }
             .scrollClipDisabled()
         }
@@ -547,13 +551,14 @@ struct SearchView: View {
     private var localArtistsSection: some View {
         VStack(alignment: .leading, spacing: 14) {
             SectionHeader(title: "Исполнители в каталоге", subtitle: "Реальные имена из открытых релизов")
-            ScrollView(.horizontal, showsIndicators: false) {
+            ScrollView(.horizontal, showsIndicators: true) {
                 LazyHStack(alignment: .top, spacing: 16) {
                     ForEach(catalogArtists) { artist in
                         ArtistCard(artist: artist, width: 84)
                     }
                 }
                 .padding(.vertical, 2)
+                .padding(.trailing, 20)
             }
             .scrollClipDisabled()
         }
@@ -562,10 +567,11 @@ struct SearchView: View {
     private var providerArtistsSection: some View {
         VStack(alignment: .leading, spacing: 14) {
             SectionHeader(title: "Исполнители в источниках")
-            ScrollView(.horizontal, showsIndicators: false) {
+            ScrollView(.horizontal, showsIndicators: true) {
                 LazyHStack(spacing: 16) {
                     ForEach(service.artists) { ArtistCard(artist: $0, width: 84) }
                 }
+                .padding(.trailing, 20)
             }
             .scrollClipDisabled()
         }
@@ -574,10 +580,11 @@ struct SearchView: View {
     private var providerAlbumsSection: some View {
         VStack(alignment: .leading, spacing: 14) {
             SectionHeader(title: "Альбомы в источниках")
-            ScrollView(.horizontal, showsIndicators: false) {
+            ScrollView(.horizontal, showsIndicators: true) {
                 LazyHStack(alignment: .top, spacing: 14) {
                     ForEach(service.albums) { AlbumCard(album: $0, width: 142) }
                 }
+                .padding(.trailing, 20)
             }
             .scrollClipDisabled()
         }

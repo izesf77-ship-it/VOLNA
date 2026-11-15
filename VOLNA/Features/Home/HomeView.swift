@@ -21,7 +21,7 @@ struct HomeView: View {
         @Bindable var state = appState
         NavigationStack {
             ScrollViewReader { proxy in
-            ScrollView(showsIndicators: false) {
+            ScrollView(showsIndicators: true) {
                 VStack(alignment: .leading, spacing: VolnaLayout.sectionSpacing) {
                     header
                         .padding(.top, 6)
@@ -330,13 +330,14 @@ struct HomeView: View {
                 }
             }
 
-            ScrollView(.horizontal, showsIndicators: false) {
+            ScrollView(.horizontal, showsIndicators: true) {
                 LazyHStack(alignment: .top, spacing: 14) {
                     ForEach(Array(catalog.recentAlbums.prefix(10))) { album in
                         AlbumCard(album: album, width: 152)
                     }
                 }
                 .padding(.vertical, 2)
+                .padding(.trailing, 20)
             }
             .scrollClipDisabled()
         }
@@ -366,13 +367,14 @@ struct HomeView: View {
                 .buttonStyle(.plain)
             }
 
-            ScrollView(.horizontal, showsIndicators: false) {
+            ScrollView(.horizontal, showsIndicators: true) {
                 LazyHStack(alignment: .top, spacing: 14) {
                     ForEach(Array(appState.radio.popular.prefix(10))) { station in
                         RadioStationCard(station: station, width: 146)
                     }
                 }
                 .padding(.vertical, 2)
+                .padding(.trailing, 20)
             }
             .scrollClipDisabled()
         }
@@ -401,13 +403,14 @@ struct HomeView: View {
                 }
             }
 
-            ScrollView(.horizontal, showsIndicators: false) {
+            ScrollView(.horizontal, showsIndicators: true) {
                 LazyHStack(alignment: .top, spacing: 18) {
                     ForEach(Array(catalog.artists.prefix(14))) { artist in
                         ArtistCard(artist: artist, width: 92)
                     }
                 }
                 .padding(.vertical, 2)
+                .padding(.trailing, 20)
             }
             .scrollClipDisabled()
         }
@@ -442,13 +445,14 @@ struct HomeView: View {
                 }
             }
 
-            ScrollView(.horizontal, showsIndicators: false) {
+            ScrollView(.horizontal, showsIndicators: true) {
                 LazyHStack(alignment: .top, spacing: 14) {
                     ForEach(Array(section.tracks.prefix(12))) { track in
                         TrackCard(track: track, queue: section.tracks, width: 150)
                     }
                 }
                 .padding(.vertical, 2)
+                .padding(.trailing, 20)
             }
             .scrollClipDisabled()
         }
@@ -566,33 +570,36 @@ struct HomeView: View {
             }
 
             if !historyTracks.isEmpty {
-                ScrollView(.horizontal, showsIndicators: false) {
+                ScrollView(.horizontal, showsIndicators: true) {
                     LazyHStack(alignment: .top, spacing: 14) {
                         ForEach(historyTracks) { track in
                             TrackCard(track: track, queue: historyTracks, width: 150)
                         }
                     }
                     .padding(.vertical, 2)
+                    .padding(.trailing, 20)
                 }
                 .scrollClipDisabled()
             } else if !recentPlaylists.isEmpty {
-                ScrollView(.horizontal, showsIndicators: false) {
+                ScrollView(.horizontal, showsIndicators: true) {
                     LazyHStack(alignment: .top, spacing: 14) {
                         ForEach(recentPlaylists) { playlist in
                             PlaylistCard(playlist: playlist, width: 152)
                         }
                     }
                     .padding(.vertical, 2)
+                    .padding(.trailing, 20)
                 }
                 .scrollClipDisabled()
             } else if !favoriteTracks.isEmpty {
-                ScrollView(.horizontal, showsIndicators: false) {
+                ScrollView(.horizontal, showsIndicators: true) {
                     LazyHStack(alignment: .top, spacing: 14) {
                         ForEach(favoriteTracks) { track in
                             TrackCard(track: track, queue: favoriteTracks, width: 150)
                         }
                     }
                     .padding(.vertical, 2)
+                    .padding(.trailing, 20)
                 }
                 .scrollClipDisabled()
             }

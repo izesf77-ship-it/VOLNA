@@ -15,7 +15,7 @@ struct PlaylistDetailView: View {
     }
 
     var body: some View {
-        ScrollView(showsIndicators: false) {
+        ScrollView(showsIndicators: true) {
             if let playlist {
                 VStack(alignment: .leading, spacing: 20) {
                     header(playlist: playlist)

@@ -4,7 +4,7 @@ struct FavoritesView: View {
     @Environment(AppState.self) private var appState
 
     var body: some View {
-        ScrollView(showsIndicators: false) {
+        ScrollView(showsIndicators: true) {
             VStack(alignment: .leading, spacing: 20) {
                 if appState.library.favorites.isEmpty {
                     EmptyStateView(
@@ -89,7 +89,7 @@ struct HistoryView: View {
     @State private var confirmClear = false
 
     var body: some View {
-        ScrollView(showsIndicators: false) {
+        ScrollView(showsIndicators: true) {
             VStack(alignment: .leading, spacing: 20) {
                 if appState.library.history.isEmpty {
                     EmptyStateView(

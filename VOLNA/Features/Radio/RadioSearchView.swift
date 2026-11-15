@@ -20,7 +20,7 @@ struct RadioSearchView: View {
     }
 
     var body: some View {
-        ScrollView(showsIndicators: false) {
+        ScrollView(showsIndicators: true) {
             LazyVStack(alignment: .leading, spacing: 16) {
                 searchField
 

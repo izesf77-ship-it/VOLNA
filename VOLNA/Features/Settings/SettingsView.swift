@@ -4,11 +4,13 @@ struct SettingsView: View {
     @Environment(AppState.self) private var appState
     @State private var confirmReset = false
     @State private var showClearedCache = false
+    @State private var showDeveloperInfo = false
+    @State private var versionTapCount = 0
 
     private var settings: SettingsStore { appState.settings }
 
     var body: some View {
-        ScrollView(showsIndicators: false) {
+        ScrollView(showsIndicators: true) {
             VStack(alignment: .leading, spacing: 24) {
                 header
                 aboutCard
@@ -336,30 +338,41 @@ struct SettingsView: View {
 
             Divider().overlay(Color.white.opacity(0.05)).padding(.leading, 44)
 
-            SettingsValueRow(
-                icon: "info.circle",
-                title: "Версия",
-                value: appState.appVersion,
-                tint: .volnaTextSecondary
-            )
+            Button {
+                versionTapCount += 1
+                if versionTapCount >= 5 {
+                    showDeveloperInfo.toggle()
+                    versionTapCount = 0
+                }
+            } label: {
+                SettingsValueRow(
+                    icon: "info.circle",
+                    title: "Версия",
+                    value: appState.appVersion,
+                    tint: .volnaTextSecondary
+                )
+            }
+            .buttonStyle(.plain)
 
-            Divider().overlay(Color.white.opacity(0.05)).padding(.leading, 44)
+            if showDeveloperInfo {
+                Divider().overlay(Color.white.opacity(0.05)).padding(.leading, 44)
 
-            SettingsValueRow(
-                icon: "number",
-                title: "Сборка",
-                value: appState.buildNumber,
-                tint: .volnaTextSecondary
-            )
+                SettingsValueRow(
+                    icon: "number",
+                    title: "Сборка",
+                    value: appState.buildNumber,
+                    tint: .volnaTextSecondary
+                )
 
-            Divider().overlay(Color.white.opacity(0.05)).padding(.leading, 44)
+                Divider().overlay(Color.white.opacity(0.05)).padding(.leading, 44)
 
-            SettingsValueRow(
-                icon: "arrow.triangle.branch",
-                title: "Git SHA",
-                value: appState.shortBuildSHA,
-                tint: .volnaTextSecondary
-            )
+                SettingsValueRow(
+                    icon: "arrow.triangle.branch",
+                    title: "Git SHA",
+                    value: appState.shortBuildSHA,
+                    tint: .volnaTextSecondary
+                )
+            }
         }
         .volnaCard(cornerRadius: 20, padding: 14)
     }

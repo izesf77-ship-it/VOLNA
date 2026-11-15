@@ -20,7 +20,7 @@ struct RadioCountriesView: View {
     }
 
     var body: some View {
-        ScrollView(showsIndicators: false) {
+        ScrollView(showsIndicators: true) {
             LazyVStack(alignment: .leading, spacing: 16) {
                 searchField
 
@@ -149,7 +149,7 @@ struct RadioGenresView: View {
     private var radio: RadioService { appState.radio }
 
     var body: some View {
-        ScrollView(showsIndicators: false) {
+        ScrollView(showsIndicators: true) {
             LazyVStack(alignment: .leading, spacing: 16) {
                 if let error = radio.directoryError, radio.genres.isEmpty {
                     ErrorBanner(message: error) {
@@ -210,7 +210,7 @@ struct RadioFavoritesView: View {
     @Environment(AppState.self) private var appState
 
     var body: some View {
-        ScrollView(showsIndicators: false) {
+        ScrollView(showsIndicators: true) {
             VStack(alignment: .leading, spacing: 20) {
                 if appState.radioFavorites.stations.isEmpty {
                     EmptyStateView(
